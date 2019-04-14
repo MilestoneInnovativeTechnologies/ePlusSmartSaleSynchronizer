@@ -1,0 +1,27 @@
+{
+  "name": "sssync",
+  "version": "1.0.0",
+  "description": "ePlus Smart Sale Sync - sync data to local pc to web and vice verse",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MilestoneInnovativeTechnologies/ePlusSmartSaleSynchronizer.git"
+  },
+  "keywords": [
+    "ePlus",
+    "Smart",
+    "Sale",
+    "Milestone",
+    "IT",
+    "Syncronizer"
+  ],
+  "author": "Milestone Innovative Technologies",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/MilestoneInnovativeTechnologies/ePlusSmartSaleSynchronizer/issues"
+  },
+  "homepage": "https://github.com/MilestoneInnovativeTechnologies/ePlusSmartSaleSynchronizer#readme"
+}
