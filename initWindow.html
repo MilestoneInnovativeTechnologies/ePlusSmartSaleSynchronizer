@@ -9,13 +9,61 @@
         pre { margin-bottom: 0px; }
         #log { overflow: hidden; height: 130px; }
     </style>
-    <script src="assets/js/init.js"></script>
+    <script>
+        const electron = require('electron');
+        const url = require('url'); const path = require('path');
+        const _ = require('lodash');
+        const $ = require('jquery');
+
+        const { ipcRenderer } = electron;
+        const { dialog,BrowserWindow } = electron.remote;
+
+        let maxLog = 10, parentWindow, currentWindow, ssConfig;
+        let invisibleWindowOption = { show: false, width: 200, height: 200 },
+            connectWindowUrl = url.format({ pathname: path.join(__dirname,'sessions', 'tryConnectMysql.html'), protocol: 'file:', slashes: true }),
+            connectWindow
+        ;
+
+        ipcRenderer.on('ss-config',function(event,ss_Config,parentWindowID){
+        });
+
+        window.onload = function(){
+            currentWindow = electron.remote.getCurrentWindow();
+            parentWindow = electron.remote.BrowserWindow.getFocusedWindow();
+            ssConfig = ipcRenderer.sendSync('get-config');
+            log('SS Config Loaded');
+            $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application);
+            connectWindow = new BrowserWindow(invisibleWindowOption); launchConnectWindow()
+        };
+
+        let quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['Yes, Quit','No, go Back'] };
+        let delConfigOptions = { type: 'info', title: 'Confirm Deleting Current Configuration', message: 'Are you sure, you want to delete the current loaded configuration file. This process is irreversible. Make sure you have proper configuration file with you to relaunch synchronizer.', buttons: ['Yes, Delete config file','No, go Back'] };
+
+
+        function quitApp(){ dialog.showMessageBox(quitConfirmOptions,(index) => { if(!index) ipcRenderer.send('quit-app'); }) }
+        function delConf(){ dialog.showMessageBox(delConfigOptions,(index) => { if(!index) ipcRenderer.send('delete-config'); }) }
+        function log(text) { $('#log').prepend($('<pre>').text(`${new Date().getTime()} :: ${text}`)).children(`:gt(${maxLog})`).remove(); }
+
+        function launchConnectWindow(){
+            connectWindow.loadURL(connectWindowUrl);
+            connectWindow.webContents.on('did-finish-load',function(){ connectWindow.webContents.send('ss-settings',ssConfig,currentWindow.id); });
+        }
+
+        ipcRenderer.on('log',function(event,text){ log(text) });
+        ipcRenderer.on('connect-success',function(event,connection,browser){
+            log('Database Connection Success');
+            ipcRenderer.send('set-connection',connection);
+            electron.remote.BrowserWindow.fromId(browser).destroy();
+            $("#sync").removeClass('d-none');
+            connectWindow = null; console.log('COnnect window null');
+        });
+    </script>
 </head>
 <body class="bg-light">
 <div class="container">
     <div class="row mt-5">
         <div class="col col-8">
-            <h4 class="text-primary text-left mt-0 mb-0" id="company_name">COMPANY NAME</h4>
+            <h4 class="text-primary text-left mt-0 mb-0" id="company_name"></h4>
             <span class="small" id="application"></span>
         </div>
         <div class="col-4 text-center">

@@ -6,13 +6,21 @@
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
     <script>
-        const fs = require('fs'); const path = require('path'); let appPath = null;
-        const electron = require('electron');
+        const fs = require('fs'); let configFilePath = null;
+        const electron = require('electron'); const $ = require('jquery');
+        let parentWindow, currentWindow;
+
         let { ipcRenderer } = electron;
+
+        ipcRenderer.on('ss-window-ready',function(event,parentBrowserID){
+        });
+
         window.onload = function(){
-            appPath = ipcRenderer.sendSync('request-app-path');
-            //setTimeout(function(){ location.reload(); },8000)
-        }
+            parentWindow = electron.remote.BrowserWindow.getFocusedWindow();
+            currentWindow = electron.remote.getCurrentWindow();
+            configFilePath = ipcRenderer.sendSync('config-file-path');
+            $('#config-div').removeClass('d-none');
+        };
         loadFile = function(e){
             let File = e.files[0];
             let Reader = new FileReader();
@@ -21,15 +29,16 @@
                 let data = JSON.parse(content);
                 const { customer,seq,url_interact,status } = data;
                 if(!customer || !seq || !url_interact || status !== 'Active') return alert('Error configuring ePlus Smart Sale');
-                fs.writeFile(path.join(appPath,'ss-config.json'),content,function(error){
-                    if(error) return alert('Error in writing file..');
-                    ipcRenderer.send('launch-main');
+                fs.writeFile(configFilePath,content,function(error){
+                    if(error) return alert('Error in writing config file..');
+                    ipcRenderer.send('launch-init');
                 });
             };
             Reader.readAsText(File);
         };
         function quitApp(){
             ipcRenderer.send('quit-app');
+            currentWindow.close();
         }
     </script>
     <style type="text/css">
@@ -57,7 +66,7 @@
             <h3 class="text-primary text-center mt-4">ePlus Smart Sale Synchronizer</h3>
             <hr>
         </div>
-        <div class="col-md-12 text-center mt-5">
+        <div class="col-md-12 text-center mt-5 d-none" id="config-div">
             <div class="file btn btn-lg btn-primary">
                 Load Configuration File
                 <input type="file" class="form-control" name="file" id="config" onchange="loadFile(this)" />

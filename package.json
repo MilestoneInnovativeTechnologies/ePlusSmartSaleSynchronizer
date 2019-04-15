@@ -1,10 +1,11 @@
 {
   "name": "sssync",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "ePlus Smart Sale Sync - sync data to local pc to web and vice verse",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "package-win": "electron-packager ./ sssync --overwrite --asar --platform=win32 --icon=assets/icons/win/icon.ico --prune=true --out=release-builds --version-string.CompanyName=\"Milestone Innovative Technologies\" --version-string.FileDescription=\"ePlus Smart Sale Database Synchronizer\" --version-string.ProductName=\"ePlus Smart Sale Synchronizer\""
   },
   "repository": {
     "type": "git",
@@ -26,9 +27,12 @@
   "homepage": "https://github.com/MilestoneInnovativeTechnologies/ePlusSmartSaleSynchronizer#readme",
   "dependencies": {
     "crypto-js": "^3.1.9-1",
-    "electron": "^4.1.4",
     "jquery": "^3.4.0",
     "lodash": "^4.17.11",
     "mysql": "^2.16.0"
+  },
+  "devDependencies": {
+    "electron": "^4.1.4",
+    "electron-packager": "^13.1.1"
   }
 }

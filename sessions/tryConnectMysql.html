@@ -8,19 +8,17 @@
 
         const ipcRenderer = electron.ipcRenderer;
         const BrowserWindow = electron.remote.BrowserWindow;
-        const upFile = 'ss-up.enc', mysqlParams = { host: null, user: null, password: null, database: null };
+        const mysqlParams = { host: null, user: null, password: null, database: null };
         const DBParamsUrl = url.format({ pathname: path.join(__dirname,'requestDBParams.html'), slashes: true, protocol: 'file:' });
-        let upPath, parentBrowser, currentBrowser = electron.remote.getCurrentWindow(), key = null;
+        let dbFile, parentBrowser, currentWindow = electron.remote.getCurrentWindow(), DBParamsBrowser, encKey = null, mysql = null;
 
-        let mysql = null;
-
-        ipcRenderer.on('settings',function(event,ssConfig,fromWindowID){
+        ipcRenderer.on('ss-settings',function(event,ssConfig,fromWindowID){
             parentBrowser = BrowserWindow.fromId(fromWindowID);
+            dbFile = ipcRenderer.sendSync('get-db-file');
             log('Preparing DB Parameters');
+            encKey = [ssConfig.customer, ssConfig.application].join(" ");
             mysqlParams.host = ssConfig.computer; mysqlParams.database = ssConfig.database;
-            key = [ssConfig.customer, ssConfig.application].join(" ");
-            upPath = path.join(ipcRenderer.sendSync('request-app-path'),upFile);
-            fs.access(upPath,(error) => {
+            fs.access(dbFile,(error) => {
                 if(error){
                     let newUserPass = new Object({ host: mysqlParams.host || 'localhost', user:'root',password:'metalic' });
                     writeDBFile(newUserPass,doConnectDB);
@@ -31,36 +29,32 @@
 
         });
 
-        ipcRenderer.on('db-params',function(event,settings){
+        ipcRenderer.on('db-params',function(event,settings,browserResponsible){
             log("Applying new credentials");
             writeDBFile(settings,doConnectDB);
+            electron.remote.BrowserWindow.fromId(browserResponsible).destroy();
         });
 
-        window.onload = function(){
-        };
-
-        function log(text) {
-            parentBrowser.webContents.send('log',text);
-        }
+        function log(text) { parentBrowser.webContents.send('log',text); }
 
         function doConnectDB(){
             mysql = db.createConnection(mysqlParams);
             log('Creating connection to database ..');
             mysql.connect(function(error){
                 if(error) { log('Database connection failed.. Need user inputs..'); return requestDBParams(mysqlParams); }
-                log('Database connection success..');
-                currentBrowser.destroy();
+                parentBrowser.webContents.send('connect-success',mysql,currentWindow.id);
             })
         }
 
         function requestDBParams(current) {
-            let dbparams_bw = new BrowserWindow({ show: true, width: 300, height: 230, frame:false });
-            dbparams_bw.loadURL(DBParamsUrl);
-            dbparams_bw.webContents.on('did-finish-load',function(){ dbparams_bw.webContents.send('settings',current,currentBrowser.id); })
+            DBParamsBrowser = new BrowserWindow({ show: true, width: 300, height: 230, frame:false });
+            DBParamsBrowser.loadURL(DBParamsUrl);
+            DBParamsBrowser.webContents.on('did-finish-load',function(){ DBParamsBrowser.webContents.send('ss-settings',current,currentWindow.id); });
+            //DBParamsBrowser.on('destr',function(){ DBParamsBrowser = null });
         }
 
         function writeDBFile(params,callback){
-            fs.writeFile(upPath,CryptoJS.AES.encrypt(JSON.stringify(params),key),function(error){
+            fs.writeFile(dbFile,CryptoJS.AES.encrypt(JSON.stringify(params),encKey),function(error){
                 mysqlParams.user = params.user;
                 mysqlParams.password = params.password;
                 mysqlParams.host = params.host;
@@ -69,8 +63,8 @@
         }
 
         function setDBParamsFromFile(callback){
-            fs.readFile(upPath,(error,data) => {
-                let { host,user,password } = JSON.parse(CryptoJS.AES.decrypt(data.toString(),key).toString(CryptoJS.enc.Utf8));
+            fs.readFile(dbFile,(error,data) => {
+                let { host,user,password } = JSON.parse(CryptoJS.AES.decrypt(data.toString(),encKey).toString(CryptoJS.enc.Utf8));
                 mysqlParams.host = host; mysqlParams.user = user; mysqlParams.password = password;
                 callback.call();
             })

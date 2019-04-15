@@ -8,10 +8,11 @@
         const electron = require('electron');
         const $ = require('jquery');
         const { ipcRenderer } = electron;
-        let parentBrowser;
+        let parentBrowser, currentBrowser;
 
-        ipcRenderer.on('settings',function(event,settings,sourceWindowID){
+        ipcRenderer.on('ss-settings',function(event,settings,sourceWindowID){
             parentBrowser = electron.remote.BrowserWindow.fromId(sourceWindowID);
+            currentBrowser = electron.remote.getCurrentWindow();
             $('[name="host"]').val(settings.host);
             $('[name="user"]').val(settings.user);
         });
@@ -19,8 +20,7 @@
         function submit() {
             let host = $('[name="host"]:first').val(), user = $('[name="user"]:first').val(), password = $('[name="password"]:first').val();
             let settings = { host,user,password };
-            parentBrowser.webContents.send('db-params',settings);
-            electron.remote.getCurrentWindow().destroy();
+            parentBrowser.webContents.send('db-params',settings,currentBrowser.id);
         }
     </script>
 </head>
@@ -29,15 +29,15 @@
     <h4>Database Credentials</h4>
     <div class="form-row">
         <label class="col-4 mt-1">Host</label>
-        <input class="col-8 form-control form-control-sm" type="text" name="host" placeholder="host">
+        <input class="col-8 form-control form-control-sm" type="text" name="host" placeholder="">
     </div>
     <div class="form-row">
         <label class="col-4 mt-1">User</label>
-        <input class="col-8 form-control form-control-sm" type="text" name="user" placeholder="user">
+        <input class="col-8 form-control form-control-sm" type="text" name="user" placeholder="">
     </div>
     <div class="form-row">
         <label class="col-4 mt-1">Password</label>
-        <input class="col-8 form-control form-control-sm" type="password" name="password" placeholder="password">
+        <input class="col-8 form-control form-control-sm" type="password" name="password" placeholder="">
     </div>
     <div class="offset-4 col-8 text-center mt-2">
         <button type="submit" class="btn btn-primary btn-sm" onclick="submit()">Continue</button>

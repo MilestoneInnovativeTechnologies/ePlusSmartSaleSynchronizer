@@ -1,42 +1,57 @@
 const electron = require('electron');
 const url = require('url'); const path = require('path');
-const fs = require('fs');
+const fs = require('fs'); const _ = require('lodash');
 
 const { app,BrowserWindow,ipcMain } = electron;
 
-let configFilePath = path.join(app.getAppPath(), 'ss-config.json'),
-    DBFilePath = path.join(app.getAppPath(), 'ss-up.enc'),
-    mainWindowOptions = { frame: false, width: 600, height: 400 },
-    configUrl = url.format({ pathname: path.join(__dirname, 'loadConfigWindow.html'), protocol: 'file:', slashes: true }),
+process.env.NODE_ENV = 'development';
+
+let configFile = 'ss-config.json', dbFile = 'ss-up.enc',
+    userPath, configFilePath, DBFilePath, initWindow = null, ssConfig = null, mysql = null,
+    mainWindowOptions = { frame: false, width: 600, height: 400 }, browserWindow = null,
+    configWindowUrl = url.format({ pathname: path.join(__dirname, 'loadConfigWindow.html'), protocol: 'file:', slashes: true }),
     initWindowUrl = url.format({ pathname: path.join(__dirname, 'initWindow.html'), protocol: 'file:', slashes: true }),
-    mainWindowUrl = url.format({ pathname: path.join(__dirname, 'mainWindow.html'), protocol: 'file:', slashes: true }),
-    initWindow = null, ssConfig = null, mysql = null, tables = null;
+    mainWindowUrl = url.format({ pathname: path.join(__dirname, 'mainWindow.html'), protocol: 'file:', slashes: true })
+    ;
 
 app.on('ready',() => {
-    initWindow = new BrowserWindow(mainWindowOptions);
-    ipcMain.on('launch-main',function(){ initWindow.loadURL(initWindowUrl) });
+    userPath = app.getPath('userData'); configFilePath = path.join(userPath,configFile); DBFilePath = path.join(userPath,dbFile);
+    browserWindow = new BrowserWindow(mainWindowOptions)
     fs.access(configFilePath, fs.constants.R_OK, (error) => {
-        if (error) return initWindow.loadURL(configUrl);
-        fs.readFile(configFilePath,function(err,data){
-            ssConfig = JSON.parse(data);
-            initWindow.loadURL(initWindowUrl);
-        });
+        if (error) launchConfigWindow();
+        else launchInitWindow();
     });
 });
 
-ipcMain.on('request-app-path',function(event){ event.returnValue = app.getAppPath(); });
+
+ipcMain.on('config-file-path',function(event){ event.returnValue = configFilePath; });
 ipcMain.on('quit-app',function(){ app.quit() });
-ipcMain.on('delete-config',function(){
-    fs.unlink(configFilePath,(error) => {
-        if(error) return alert('Error in deleting file, Please contact Milestone Support!!');
-        fs.unlink(DBFilePath,(error) => {
-            if(error) return alert('Error in deleting DB File, Please contact Milestone Support!!');
-        });
-        initWindow.loadURL(configUrl);
-    });
-});
-ipcMain.on('request-ss-config',function(event){ event.returnValue = ssConfig;  });
-ipcMain.on('set-tables',function(event,schema){ tables = schema; });
+ipcMain.on('launch-init',launchInitWindow);
+ipcMain.on('delete-config',function(){ deleteConfigurations(); launchConfigWindow(); });
+ipcMain.on('get-config',function(event){ event.returnValue = ssConfig; });
+ipcMain.on('get-db-file',function(event){ event.returnValue = DBFilePath; });
 ipcMain.on('set-connection',function(event,connection){ mysql = connection; });
-// let mainWindow = new BrowserWindow(mainWindowOptions);
-// mainWindow.loadURL(mainWindowUrl); mainWindow.webContents.send('data',mysql,tables,ssConfig);
+
+function launchConfigWindow(){
+    browserWindow.loadURL(configWindowUrl);
+    browserWindow.webContents.on('did-finish-load',function(){ browserWindow.webContents.send('ss-window-ready',browserWindow.id); });
+}
+function launchInitWindow(){
+    fs.readFile(configFilePath,function(err,data){
+        if(err) return console.log('read config error');
+        ssConfig = JSON.parse(data);
+        browserWindow.loadURL(initWindowUrl);
+        //browserWindow.webContents.on('did-finish-load',function(){ browserWindow.webContents.send('ss-config',ssConfig,browserWindow.id); });
+    });
+}
+
+function deleteConfigurations(){
+    fs.access(configFilePath, fs.constants.R_OK, (err) => {
+        if(!err) fs.unlink(configFilePath,(err) => (err) ? console.log('Configuration file cannot be deleted..') : '');
+        else console.log('Configuration file is not accessible..');
+    });
+    fs.access(DBFilePath, fs.constants.R_OK, (err) => {
+        if(!err) fs.unlink(DBFilePath,(err) => (err) ? console.log('DB Config file cannot be deleted..') : '');
+        else console.log('DB Config file is not accessible..');
+    });
+}
