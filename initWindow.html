@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ePlus Smart Sale Synchronizer</title>
+    <link rel="stylesheet" href="assets/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
+    <style type="text/css">
+        pre { margin-bottom: 0px; }
+        #log { overflow: hidden; height: 130px; }
+    </style>
+    <script src="assets/js/init.js"></script>
+</head>
+<body class="bg-light">
+<div class="container">
+    <div class="row mt-5">
+        <div class="col col-8">
+            <h4 class="text-primary text-left mt-0 mb-0" id="company_name">COMPANY NAME</h4>
+            <span class="small" id="application"></span>
+        </div>
+        <div class="col-4 text-center">
+            <p class="text-primary font-weight-bold">ePlus Smart Sale<br>Synchronizer</p>
+        </div>
+    </div>
+    <hr>
+    <div class="row">
+        <div class="col-12 font-italic" id="log"></div>
+        <div class="col-12 font-italic text-center d-none" id="sync" style="position: absolute; top:140px; padding-left:15px; padding-right: 15px; background-color: rgba(236, 236, 236, 0.85); left: 45px; width: 510px; height: 130px;">
+            <button class="mt-5 btn btn-primary btn-lg btn-block">Start Synchronizing</button>
+        </div>
+    </div>
+</div>
+<footer class="fixed-bottom clearfix">
+    <div class="text-center">
+        <button class="btn btn-warning btn-sm" onclick="delConf()">Upload new config file</button>
+        <button class="btn btn-danger btn-sm" onclick="quitApp()">Close</button>
+    </div>
+    <hr>
+    <div class="row" style="color: #C8C8C8">
+        <div class="col col-6"><p class="small pl-3">Powered by<br>ePlus</p></div>
+        <div class="col col-6"><p class="small pr-3 text-right">Copyright Protected by<br>Milestone Innovative Technologies</p></div>
+    </div>
+</footer>
+</body></html>

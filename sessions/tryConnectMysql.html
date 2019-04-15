@@ -1,0 +1,83 @@
+<html lang="en">
+<head>
+    <title>MySQL Connect</title>
+    <script>
+        const electron = require('electron');
+        let db = require('mysql'), CryptoJS = require("crypto-js");
+        let fs = require('fs'); let url = require('url'); let path = require('path');
+
+        const ipcRenderer = electron.ipcRenderer;
+        const BrowserWindow = electron.remote.BrowserWindow;
+        const upFile = 'ss-up.enc', mysqlParams = { host: null, user: null, password: null, database: null };
+        const DBParamsUrl = url.format({ pathname: path.join(__dirname,'requestDBParams.html'), slashes: true, protocol: 'file:' });
+        let upPath, parentBrowser, currentBrowser = electron.remote.getCurrentWindow(), key = null;
+
+        let mysql = null;
+
+        ipcRenderer.on('settings',function(event,ssConfig,fromWindowID){
+            parentBrowser = BrowserWindow.fromId(fromWindowID);
+            log('Preparing DB Parameters');
+            mysqlParams.host = ssConfig.computer; mysqlParams.database = ssConfig.database;
+            key = [ssConfig.customer, ssConfig.application].join(" ");
+            upPath = path.join(ipcRenderer.sendSync('request-app-path'),upFile);
+            fs.access(upPath,(error) => {
+                if(error){
+                    let newUserPass = new Object({ host: mysqlParams.host || 'localhost', user:'root',password:'metalic' });
+                    writeDBFile(newUserPass,doConnectDB);
+                } else {
+                    setDBParamsFromFile(doConnectDB);
+                }
+            });
+
+        });
+
+        ipcRenderer.on('db-params',function(event,settings){
+            log("Applying new credentials");
+            writeDBFile(settings,doConnectDB);
+        });
+
+        window.onload = function(){
+        };
+
+        function log(text) {
+            parentBrowser.webContents.send('log',text);
+        }
+
+        function doConnectDB(){
+            mysql = db.createConnection(mysqlParams);
+            log('Creating connection to database ..');
+            mysql.connect(function(error){
+                if(error) { log('Database connection failed.. Need user inputs..'); return requestDBParams(mysqlParams); }
+                log('Database connection success..');
+                currentBrowser.destroy();
+            })
+        }
+
+        function requestDBParams(current) {
+            let dbparams_bw = new BrowserWindow({ show: true, width: 300, height: 230, frame:false });
+            dbparams_bw.loadURL(DBParamsUrl);
+            dbparams_bw.webContents.on('did-finish-load',function(){ dbparams_bw.webContents.send('settings',current,currentBrowser.id); })
+        }
+
+        function writeDBFile(params,callback){
+            fs.writeFile(upPath,CryptoJS.AES.encrypt(JSON.stringify(params),key),function(error){
+                mysqlParams.user = params.user;
+                mysqlParams.password = params.password;
+                mysqlParams.host = params.host;
+                callback.call();
+            })
+        }
+
+        function setDBParamsFromFile(callback){
+            fs.readFile(upPath,(error,data) => {
+                let { host,user,password } = JSON.parse(CryptoJS.AES.decrypt(data.toString(),key).toString(CryptoJS.enc.Utf8));
+                mysqlParams.host = host; mysqlParams.user = user; mysqlParams.password = password;
+                callback.call();
+            })
+        }
+    </script>
+</head>
+<body>
+
+</body>
+</html>

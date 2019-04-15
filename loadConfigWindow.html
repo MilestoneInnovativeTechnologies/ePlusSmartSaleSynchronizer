@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ePlus Smart Sale Synchronizer</title>
+    <link rel="stylesheet" href="assets/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
+    <script>
+        const fs = require('fs'); const path = require('path'); let appPath = null;
+        const electron = require('electron');
+        let { ipcRenderer } = electron;
+        window.onload = function(){
+            appPath = ipcRenderer.sendSync('request-app-path');
+            //setTimeout(function(){ location.reload(); },8000)
+        }
+        loadFile = function(e){
+            let File = e.files[0];
+            let Reader = new FileReader();
+            Reader.onload = function(){
+                let content = Reader.result;
+                let data = JSON.parse(content);
+                const { customer,seq,url_interact,status } = data;
+                if(!customer || !seq || !url_interact || status !== 'Active') return alert('Error configuring ePlus Smart Sale');
+                fs.writeFile(path.join(appPath,'ss-config.json'),content,function(error){
+                    if(error) return alert('Error in writing file..');
+                    ipcRenderer.send('launch-main');
+                });
+            };
+            Reader.readAsText(File);
+        };
+        function quitApp(){
+            ipcRenderer.send('quit-app');
+        }
+    </script>
+    <style type="text/css">
+        * {
+            font-family: 'Fira Sans', sans-serif;
+        }
+        div.file {
+            position: relative;
+            overflow: hidden;
+        }
+        input[type='file'] {
+            position: absolute;
+            font-size: 50px;
+            opacity: 0;
+            right: 0;
+            top: 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container">
+    <div class="row">
+        <div class="col col-md-12">
+            <h3 class="text-primary text-center mt-4">ePlus Smart Sale Synchronizer</h3>
+            <hr>
+        </div>
+        <div class="col-md-12 text-center mt-5">
+            <div class="file btn btn-lg btn-primary">
+                Load Configuration File
+                <input type="file" class="form-control" name="file" id="config" onchange="loadFile(this)" />
+            </div>
+        </div>
+    </div>
+    <div class="text-center mt-5"><button onclick="quitApp()" class="mt-5 btn btn-danger btn-small"> Close </button></div>
+</div>
+<footer class="fixed-bottom clearfix">
+    <hr>
+    <div class="row" style="color: #C8C8C8">
+        <div class="col col-md-6"><p class="small pl-3">Powered by<br>ePlus</p></div>
+        <div class="col col-md-6"><p class="small pr-3 text-right">Copyright Protected by<br>Milestone Innovative Technologies</p></div>
+    </div>
+</footer>
+</body>
+</html>
