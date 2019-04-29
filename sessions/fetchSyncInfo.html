@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fetch Sync Info</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), url = require('url'), path = require('path'),
+            fetchPath = 'api/ss/sync/table/info',
+            _ = require('lodash'), $ = require('jquery'), currentWindow = remote.getCurrentWindow();
+        let parentWindow, request;
+
+        function log(text){ send('log',text); }
+        function send(channel,arg){ parentWindow.webContents.send.apply(null,[channel,arg]); }
+
+        function getPreparedFetchUrl(ssFObj){ return url.format({protocol:'http',hostname:'mit',pathname:fetchPath,query:ssFObj}).toString(); }
+        function fetchSyncInfo(url){
+            $.getJSON(url).done(function(resp){
+                if(_.isEmpty(resp)) send('empty-info',resp);
+                else send('fetched-info',resp); currentWindow.destroy();
+            }).fail(function(xhr){
+                if(!xhr.readyState){ log('Network Error..'); log('May be no internet connection'); log('OR'); log('Url defined may be unreachable..'); }
+                else log('Unexpected error while fetching info!!');
+                send('retry-fetch'); currentWindow.destroy();
+            })
+        }
+
+        ipcRenderer.on('client-code',function(event,ssFObj,parentWindowId){
+            parentWindow = remote.BrowserWindow.fromId(parentWindowId);
+            fetchSyncInfo(getPreparedFetchUrl(ssFObj));
+        })
+    </script>
+</head>
+<body>
+Bale Besh
+</body>
+</html>

@@ -7,7 +7,7 @@ const { app,BrowserWindow,ipcMain } = electron;
 process.env.NODE_ENV = 'development';
 
 let configFile = 'ss-config.json', dbFile = 'ss-up.enc',
-    userPath, configFilePath, DBFilePath, initWindow = null, ssConfig = null, mysql = null,
+    userPath, configFilePath, DBFilePath, initWindow = null, ssConfig = null, mysql = null, syncInfo = null,
     mainWindowOptions = { frame: false, width: 600, height: 400 }, browserWindow = null,
     configWindowUrl = url.format({ pathname: path.join(__dirname, 'loadConfigWindow.html'), protocol: 'file:', slashes: true }),
     initWindowUrl = url.format({ pathname: path.join(__dirname, 'initWindow.html'), protocol: 'file:', slashes: true }),
@@ -16,7 +16,7 @@ let configFile = 'ss-config.json', dbFile = 'ss-up.enc',
 
 app.on('ready',() => {
     userPath = app.getPath('userData'); configFilePath = path.join(userPath,configFile); DBFilePath = path.join(userPath,dbFile);
-    browserWindow = new BrowserWindow(mainWindowOptions)
+    browserWindow = new BrowserWindow(mainWindowOptions);
     fs.access(configFilePath, fs.constants.R_OK, (error) => {
         if (error) launchConfigWindow();
         else launchInitWindow();
@@ -31,6 +31,10 @@ ipcMain.on('delete-config',function(){ deleteConfigurations(); launchConfigWindo
 ipcMain.on('get-config',function(event){ event.returnValue = ssConfig; });
 ipcMain.on('get-db-file',function(event){ event.returnValue = DBFilePath; });
 ipcMain.on('set-connection',function(event,connection){ mysql = connection; });
+ipcMain.on('set-table-info',function(event,response){ syncInfo = response; });
+ipcMain.on('start-sync',function(){
+    console.log('I am gonna start sync.. ',syncInfo,mysql);
+});
 
 function launchConfigWindow(){
     browserWindow.loadURL(configWindowUrl);
@@ -41,7 +45,6 @@ function launchInitWindow(){
         if(err) return console.log('read config error');
         ssConfig = JSON.parse(data);
         browserWindow.loadURL(initWindowUrl);
-        //browserWindow.webContents.on('did-finish-load',function(){ browserWindow.webContents.send('ss-config',ssConfig,browserWindow.id); });
     });
 }
 

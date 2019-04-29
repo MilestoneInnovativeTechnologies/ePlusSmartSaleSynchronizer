@@ -21,18 +21,15 @@
         let maxLog = 10, parentWindow, currentWindow, ssConfig;
         let invisibleWindowOption = { show: false, width: 200, height: 200 },
             connectWindowUrl = url.format({ pathname: path.join(__dirname,'sessions', 'tryConnectMysql.html'), protocol: 'file:', slashes: true }),
-            connectWindow
+            fetchSyncInfoUrl = url.format({ pathname: path.join(__dirname,'sessions', 'fetchSyncInfo.html'), protocol: 'file:', slashes: true }),
+            connectWindow, fetchSyncInfoWindow
         ;
-
-        ipcRenderer.on('ss-config',function(event,ss_Config,parentWindowID){
-        });
 
         window.onload = function(){
             currentWindow = electron.remote.getCurrentWindow();
             parentWindow = electron.remote.BrowserWindow.getFocusedWindow();
             ssConfig = ipcRenderer.sendSync('get-config');
-            log('SS Config Loaded');
-            $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application);
+            log('SS Config Loaded'); setCompanyDetails(ssConfig);
             connectWindow = new BrowserWindow(invisibleWindowOption); launchConnectWindow()
         };
 
@@ -42,21 +39,37 @@
 
         function quitApp(){ dialog.showMessageBox(quitConfirmOptions,(index) => { if(!index) ipcRenderer.send('quit-app'); }) }
         function delConf(){ dialog.showMessageBox(delConfigOptions,(index) => { if(!index) ipcRenderer.send('delete-config'); }) }
+        function retryFetch(){ launchFetchSyncInfoWindow(); $('.retry-button').addClass('d-none'); }
+        function startSync(){ ipcRenderer.send('start-sync'); }
         function log(text) { $('#log').prepend($('<pre>').text(`${new Date().getTime()} :: ${text}`)).children(`:gt(${maxLog})`).remove(); }
+
+        function setCompanyDetails(ssConfig){ $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application); }
 
         function launchConnectWindow(){
             connectWindow.loadURL(connectWindowUrl);
             connectWindow.webContents.on('did-finish-load',function(){ connectWindow.webContents.send('ss-settings',ssConfig,currentWindow.id); });
+            connectWindow.on('closed', function(){ connectWindow = null; })
         }
 
+        function launchFetchSyncInfoWindow(){
+            let ssObj = _.pick(ssConfig,['code','id','customer','seq']);
+            fetchSyncInfoWindow = new BrowserWindow(invisibleWindowOption);
+            fetchSyncInfoWindow.loadURL(fetchSyncInfoUrl);
+            fetchSyncInfoWindow.webContents.on('did-finish-load',function(){ fetchSyncInfoWindow.webContents.send('client-code',ssObj,currentWindow.id); })
+            fetchSyncInfoWindow.on('closed', function(){ fetchSyncInfoWindow = null; })
+        }
+
+
         ipcRenderer.on('log',function(event,text){ log(text) });
+        ipcRenderer.on('retry-fetch',function(event){ $('.retry-button').removeClass('d-none') });
         ipcRenderer.on('connect-success',function(event,connection,browser){
             log('Database Connection Success');
             ipcRenderer.send('set-connection',connection);
             electron.remote.BrowserWindow.fromId(browser).destroy();
-            $("#sync").removeClass('d-none');
-            connectWindow = null; console.log('COnnect window null');
+            log('Initiating fetching Sync info'); launchFetchSyncInfoWindow();
         });
+        ipcRenderer.on('empty-info',function(){ log('Received empty info from site.'); log('Reload Config file'); });
+        ipcRenderer.on('fetched-info',function(event,resp){ ipcRenderer.send('set-table-info',resp); log('Sync info received.'); $("#sync").removeClass('d-none'); });
     </script>
 </head>
 <body class="bg-light">
@@ -74,12 +87,13 @@
     <div class="row">
         <div class="col-12 font-italic" id="log"></div>
         <div class="col-12 font-italic text-center d-none" id="sync" style="position: absolute; top:140px; padding-left:15px; padding-right: 15px; background-color: rgba(236, 236, 236, 0.85); left: 45px; width: 510px; height: 130px;">
-            <button class="mt-5 btn btn-primary btn-lg btn-block">Start Synchronizing</button>
+            <button class="mt-5 btn btn-primary btn-lg btn-block" onclick="startSync()">Start Synchronizing</button>
         </div>
     </div>
 </div>
 <footer class="fixed-bottom clearfix">
     <div class="text-center">
+        <button class="btn btn-info btn-sm d-none retry-button" onclick="retryFetch()">Retry Fetching Info</button>
         <button class="btn btn-warning btn-sm" onclick="delConf()">Upload new config file</button>
         <button class="btn btn-danger btn-sm" onclick="quitApp()">Close</button>
     </div>
