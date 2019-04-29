@@ -7,34 +7,89 @@
     <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
     <style type="text/css">
         pre { margin-bottom: 0px; }
-        #log { overflow: hidden; height: 130px; }
+        #log { overflow: hidden; height: 200px; }
     </style>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), { dialog } = remote, $ = require('jquery'), _ = require('lodash'), fs = require('fs');
+        const quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] },
+            maxLog = 15, initTableCheckDelay = 2000
+        ;
+        let ssConfig,mysql,syncInfo,tblData = {},syncFile,processQueue = {};
+
+        $(function(){ syncFile = ipcRenderer.sendSync('get-sync-info'); initApp(ipcRenderer.sendSync('get-all-config')); });
+
+        function initApp(configs){
+            log('Initializing sync..');
+            ssConfig = configs.ssConfig; mysql = configs.mysql; syncInfo = configs.syncInfo;
+            $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application);
+            _.forEach(syncInfo,initTable); saveTblData(); setProcessQueue(); console.log(processQueue);
+        }
+
+        function initTable(data,idx){
+            const { table,last_updated,last_created,sync_to_ttl,sync_from_ttl } = data;
+            tblData[table] = { updated: last_updated,created: last_created, to:parseInt(sync_to_ttl), from:parseInt(sync_from_ttl) };
+            //setTimeout(processTable, parseInt(idx)*initTableCheckDelay, table);
+        }
+
+        function setProcessQueue(){
+            _.forEach(tblData,(data,table) => {
+                let timeNow = parseInt((new Date().getTime()/1000).toString().substr(4));
+                addToProcessQueue(timeNow,[table,'up']); addToProcessQueue(timeNow,[table,'down']);
+            });
+        }
+
+        function saveTblData(){
+            fs.writeFile(syncFile,JSON.stringify(tblData),function(error){
+                if(error) return log('Error in saving sync info file!!');
+                else log('Saved sync info file..')
+            });
+        }
+
+        function addToProcessQueue(no,data){
+            if(!processQueue.hasOwnProperty(no)) return processQueue[no] = data;
+            return addToProcessQueue(++no,data);
+        }
+
+        function haveQueueEarlierThan(num){
+            let first = _.head(_.keys(processQueue));
+            return !!(first && parseInt(first) <= parseInt(num));
+        }
+
+        function getFirstFromQueue(){
+            let first = _.head(_.keys(processQueue)), data = null;
+            if(first) data = processQueue[first];
+            delete processQueue[first];
+            return data;
+        }
+
+        function processTable(table) {
+            log('Processing Table: ' + table);
+        }
+
+        function log(text) { $('#log').prepend($('<pre>').text(`${new Date().getTime().toString().substr(4)} :: ${text}`)).children(`:gt(${maxLog})`).remove(); }
+        function send(channel,args){ ipcRenderer.send.apply(null,[channel,args]) }
+        function quitApp(){ dialog.showMessageBox(quitConfirmOptions,(index) => { if(index) send('quit-app'); }) }
+    </script>
 </head>
-<body class="bg-light">
-<div class="container">
-    <div class="row mt-5">
-        <div class="col col-8">
-            <h4 class="text-primary text-left mt-0 mb-0" id="company_name"></h4>
-            <span class="small" id="application"></span>
-        </div>
-        <div class="col-4 text-center">
-            <p class="text-primary font-weight-bold">ePlus Smart Sale<br>Synchronizer</p>
-        </div>
+<body class="bg-light mt-2">
+<div class="container-fluid">
+    <div class="row">
+        <div class="col col-8"><h5 class="text-primary text-left mt-0 mb-0" id="company_name"></h5><span class="small" id="application"></span></div>
+        <div class="col-4 text-right"><p class="text-primary font-weight-light">ePlus Smart Sale<br>Synchronizer</p></div>
     </div>
-    <hr>
+    <hr class="m-0 mb-3">
     <div class="row">
         <div class="col-12 font-italic" id="log"></div>
     </div>
 </div>
 <footer class="fixed-bottom clearfix">
-    <div class="text-center">
-        <button class="btn btn-warning btn-sm" onclick="delConf()">Upload new config file</button>
-        <button class="btn btn-danger btn-sm" onclick="quitApp()">Close</button>
+    <div class="text-center container-fluid" style="height: 40px;">
+        <button class="btn btn-danger btn-sm" onclick="quitApp()"> QUIT </button>
     </div>
-    <hr>
-    <div class="row" style="color: #C8C8C8">
-        <div class="col col-6"><p class="small pl-3">Powered by<br>ePlus</p></div>
-        <div class="col col-6"><p class="small pr-3 text-right">Copyright Protected by<br>Milestone Innovative Technologies</p></div>
+    <hr class="m-0 mt-2">
+    <div class="row p-2" style="color: #C8C8C8">
+        <div class="col col-6"><p class="small pl-3 m-0 font-weight-light">Powered by<br>ePlus</p></div>
+        <div class="col col-6"><p class="small pr-3 m-0 text-right font-weight-light">Copyright Protected by<br>Milestone Innovative Technologies</p></div>
     </div>
 </footer>
 </body></html>
