@@ -61,10 +61,10 @@
 
 
         ipcRenderer.on('log',function(event,text){ log(text) });
-        ipcRenderer.on('retry-fetch',function(event){ $('.retry-button').removeClass('d-none') });
-        ipcRenderer.on('connect-success',function(event,connection,browser){
+        ipcRenderer.on('retry-fetch',function(){ $('.retry-button').removeClass('d-none') });
+        ipcRenderer.on('connect-success',function(event,mysqlParams,browser){
             log('Database Connection Success');
-            ipcRenderer.send('set-connection',connection);
+            ipcRenderer.send('set-connection',mysqlParams);
             electron.remote.BrowserWindow.fromId(browser).destroy();
             log('Initiating fetching Sync info'); launchFetchSyncInfoWindow();
         });

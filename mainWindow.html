@@ -6,85 +6,113 @@
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
     <style type="text/css">
-        pre { margin-bottom: 0px; }
-        #log { overflow: hidden; height: 200px; }
+        pre { margin-bottom: 0px; font-size: 12px }
+        .app-title { background: url("assets/images/paused.gif") no-repeat 155px bottom; }
+        .app-title.working { background-image: url("assets/images/working.gif"); }
+        div#main { overflow: hidden; height: 200px; }
+        #log { overflow: inherit; height: inherit; }
+        #queue a { background-position: right center; background-repeat: no-repeat; font-weight: lighter; font-size: 10px; display: block; }
+        #queue a.queue-working { font-weight: bold !important; }
+        #queue a.up { background-image: url("assets/images/up.png"); }
+        #queue a.down { background-image: url("assets/images/down.png"); }
     </style>
     <script>
-        const { ipcRenderer,remote } = require('electron'), { dialog } = remote, $ = require('jquery'), _ = require('lodash'), fs = require('fs');
+        const { ipcRenderer,remote } = require('electron'), { dialog } = remote, $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql');
         const quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] },
-            maxLog = 15, initTableCheckDelay = 2000
+            maxLog = 15, continueInterval = 1000
         ;
-        let ssConfig,mysql,syncInfo,tblData = {},syncFile,processQueue = {};
+        let ssConfig,syncInfo,mysql = null,tblData = {},syncFile,processQueue = {},doContinue = true, inWork = false, workTimeOut = 0;
 
-        $(function(){ syncFile = ipcRenderer.sendSync('get-sync-info'); initApp(ipcRenderer.sendSync('get-all-config')); });
+        $(function(){
+            initApp(ipcRenderer.sendSync('get-all-config'));
+            setInterval(doProcessQueue,continueInterval);
+        });
 
         function initApp(configs){
             log('Initializing sync..');
-            ssConfig = configs.ssConfig; mysql = configs.mysql; syncInfo = configs.syncInfo;
+            syncInfo = configs.syncInfo; syncFile = configs.syncFilePath;
+            setupApp(configs.ssConfig); setupMysqlConnection(configs.mysqlParams);
+            _.forEach(syncInfo,initTable); saveTblData();
+        }
+    </script>
+    <script>
+        function setupApp(config){
+            ssConfig = config;
             $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application);
-            _.forEach(syncInfo,initTable); saveTblData(); setProcessQueue(); console.log(processQueue);
         }
 
-        function initTable(data,idx){
-            const { table,last_updated,last_created,sync_to_ttl,sync_from_ttl } = data;
+        function setupMysqlConnection(mysqlParams){
+            mysql = db.createConnection(mysqlParams);
+            mysql.connect(function(error){ if(!error) return log('Database connection established..'); mysql = null; log('Could not establish database connection.'); });
+        }
+
+        function initTable(data){
+            const { table,last_updated,last_created,sync_to_ttl,sync_from_ttl } = data, timeNow = getTimeNow();
             tblData[table] = { updated: last_updated,created: last_created, to:parseInt(sync_to_ttl), from:parseInt(sync_from_ttl) };
-            //setTimeout(processTable, parseInt(idx)*initTableCheckDelay, table);
-        }
-
-        function setProcessQueue(){
-            _.forEach(tblData,(data,table) => {
-                let timeNow = parseInt((new Date().getTime()/1000).toString().substr(4));
-                addToProcessQueue(timeNow,[table,'up']); addToProcessQueue(timeNow,[table,'down']);
-            });
+            addToProcessQueue(timeNow,[table,'up']); addToProcessQueue(timeNow,[table,'down']);
         }
 
         function saveTblData(){
             fs.writeFile(syncFile,JSON.stringify(tblData),function(error){
-                if(error) return log('Error in saving sync info file!!');
-                else log('Saved sync info file..')
+                if(!error) return; doContinue = false;
+                log('Error in saving sync info file!!');
             });
         }
 
-        function addToProcessQueue(no,data){
-            if(!processQueue.hasOwnProperty(no)) return processQueue[no] = data;
-            return addToProcessQueue(++no,data);
+        function getTimeNow(){ return parseInt((new Date().getTime()/1000).toString().substr(4)); }
+        function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
+        function haveQueueEarlierThan(num){ let first = _.head(_.keys(processQueue)); return !!(first && parseInt(first) <= parseInt(num)); }
+        function pullFirstFromQueue(){ let first = _.head(_.keys(processQueue)), data = null; if(first) data = processQueue[first]; delete processQueue[first]; removeQueueDisplay(first); return data; }
+        function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); }
+        function displayProcessQueue(){ let queueDiv = $('#queue'); $('.queue-item',queueDiv).remove(); _.forEach(processQueue,(data,id) => { queueDiv.append(getQueueItem(data[0],data[1],id)); }); }
+        function getQueueItem(text,direction,id){ return $('<a>').addClass(['queue-item',direction,id]).text(text); }
+        function removeQueueDisplay(no){ $('.queue-item.'+no).slideUp(function(){ this.remove() }); }
+
+        function doProcessQueue(){
+            let timeNow = getTimeNow();
+            if(!inWork) $('#alter_continue').prop('disabled',false);
+            if(!doContinue || inWork || !haveQueueEarlierThan(timeNow)) return;
+            if(doContinue) updateWorking(); let data = pullFirstFromQueue(); if(!data) return;
+            inWork = true; processTable(data[0],data[1])
         }
 
-        function haveQueueEarlierThan(num){
-            let first = _.head(_.keys(processQueue));
-            return !!(first && parseInt(first) <= parseInt(num));
+        function processTable(table,direction) {
+            log('Processing Table: ' + table + ' -> ' + direction);
         }
 
-        function getFirstFromQueue(){
-            let first = _.head(_.keys(processQueue)), data = null;
-            if(first) data = processQueue[first];
-            delete processQueue[first];
-            return data;
-        }
+        function upSync(table){
 
-        function processTable(table) {
-            log('Processing Table: ' + table);
         }
+        function downSync(table){
 
-        function log(text) { $('#log').prepend($('<pre>').text(`${new Date().getTime().toString().substr(4)} :: ${text}`)).children(`:gt(${maxLog})`).remove(); }
+        }
+    </script>
+    <script>
+        function updateWorking(){ clearTimeout(workTimeOut); $('.app-title').addClass('working'); workTimeOut = setTimeout(function(){ $('.app-title').removeClass('working'); },continueInterval); }
+        function log(text) { $('<pre>').text(`${(new Date().getTime()).toString().substr(7)} :: ${text}`).slideUp().prependTo('#log').slideDown().parent('#log').children(`:gt(${maxLog})`).remove(); }
         function send(channel,args){ ipcRenderer.send.apply(null,[channel,args]) }
         function quitApp(){ dialog.showMessageBox(quitConfirmOptions,(index) => { if(index) send('quit-app'); }) }
+        function alterContinue(){ doContinue = !doContinue; $('#alter_continue').text((doContinue?'Pause':'Continue') + ' Sync') }
     </script>
 </head>
 <body class="bg-light mt-2">
 <div class="container-fluid">
     <div class="row">
         <div class="col col-8"><h5 class="text-primary text-left mt-0 mb-0" id="company_name"></h5><span class="small" id="application"></span></div>
-        <div class="col-4 text-right"><p class="text-primary font-weight-light">ePlus Smart Sale<br>Synchronizer</p></div>
+        <div class="col-4 text-right app-title"><p class="text-primary font-weight-light">ePlus Smart Sale<br>Synchronizer</p></div>
     </div>
     <hr class="m-0 mb-3">
-    <div class="row">
-        <div class="col-12 font-italic" id="log"></div>
+    <div class="row" id="main">
+        <div class="col-9 font-italic pr-0 border-right" id="log"></div>
+        <div class="col-3 font-italic" id="queue">
+            <a class="queue-working"></a>
+        </div>
     </div>
 </div>
 <footer class="fixed-bottom clearfix">
     <div class="text-center container-fluid" style="height: 40px;">
         <button class="btn btn-danger btn-sm" onclick="quitApp()"> QUIT </button>
+        <button id="alter_continue" class="btn btn-warning btn-sm" onclick="this.setAttribute('disabled',true);alterContinue();">Pause Sync</button>
     </div>
     <hr class="m-0 mt-2">
     <div class="row p-2" style="color: #C8C8C8">

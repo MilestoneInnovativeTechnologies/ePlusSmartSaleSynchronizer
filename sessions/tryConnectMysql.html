@@ -42,7 +42,8 @@
             log('Creating connection to database ..');
             mysql.connect(function(error){
                 if(error) { log('Database connection failed.. Need user inputs..'); return requestDBParams(mysqlParams); }
-                parentBrowser.webContents.send('connect-success',mysql,currentWindow.id);
+                parentBrowser.webContents.send('connect-success',mysqlParams,currentWindow.id);
+                mysql.end();
             })
         }
 
@@ -50,7 +51,6 @@
             DBParamsBrowser = new BrowserWindow({ show: true, width: 300, height: 230, frame:false });
             DBParamsBrowser.loadURL(DBParamsUrl);
             DBParamsBrowser.webContents.on('did-finish-load',function(){ DBParamsBrowser.webContents.send('ss-settings',current,currentWindow.id); });
-            //DBParamsBrowser.on('destr',function(){ DBParamsBrowser = null });
         }
 
         function writeDBFile(params,callback){

@@ -7,7 +7,7 @@ const { app,BrowserWindow,ipcMain } = electron;
 process.env.NODE_ENV = 'development';
 
 let configFile = 'ss-config.json', dbFile = 'ss-up.enc', syncFile = 'sync-info.json',
-    userPath, configFilePath, DBFilePath, syncFilePath, ssConfig = null, mysql = null, syncInfo = null,
+    userPath, configFilePath, DBFilePath, syncFilePath, ssConfig = null, mysqlParams = null, syncInfo = null,
     mainWindowOptions = { frame: false, width: 600, height: 400 }, browserWindow = null,
     configWindowUrl = url.format({ pathname: path.join(__dirname, 'loadConfigWindow.html'), protocol: 'file:', slashes: true }),
     initWindowUrl = url.format({ pathname: path.join(__dirname, 'initWindow.html'), protocol: 'file:', slashes: true }),
@@ -31,11 +31,10 @@ ipcMain.on('launch-init',launchInitWindow);
 ipcMain.on('delete-config',function(){ deleteConfigurations(); launchConfigWindow(); });
 ipcMain.on('get-config',function(event){ event.returnValue = ssConfig; });
 ipcMain.on('get-db-file',function(event){ event.returnValue = DBFilePath; });
-ipcMain.on('get-sync-info',function(event){ event.returnValue = syncFilePath; });
-ipcMain.on('set-connection',function(event,connection){ mysql = connection; });
+ipcMain.on('set-connection',function(event,params){ mysqlParams = params; });
 ipcMain.on('set-table-info',function(event,response){ syncInfo = response; });
 ipcMain.on('start-sync',function(){ browserWindow.loadURL(mainWindowUrl); });
-ipcMain.on('get-all-config',function(event){ event.returnValue = { ssConfig,mysql,syncInfo } });
+ipcMain.on('get-all-config',function(event){ event.returnValue = { ssConfig,mysqlParams,syncInfo,syncFilePath } });
 
 function launchConfigWindow(){
     browserWindow.loadURL(configWindowUrl);
