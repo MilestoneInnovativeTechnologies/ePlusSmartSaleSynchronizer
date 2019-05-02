@@ -1,0 +1,9 @@
+pre { margin-bottom: 0px; font-size: 12px; width: 430px; overflow: hidden; }
+.app-title { background: url("../images/paused.gif") no-repeat 155px bottom; }
+.app-title.working { background-image: url("../images/working.gif"); }
+div#main { overflow: hidden; height: 200px; }
+#log { overflow: inherit; height: inherit; }
+#queue a { background-position: right center; background-repeat: no-repeat; font-weight: lighter; font-size: 10px; display: block; }
+#queue a.queue-working { font-weight: bold !important; height: 15px; }
+#queue a.up { background-image: url("../images/up.png"); }
+#queue a.down { background-image: url("../images/down.png"); }

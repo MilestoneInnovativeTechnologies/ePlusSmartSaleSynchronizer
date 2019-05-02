@@ -55,7 +55,7 @@
             let ssObj = _.pick(ssConfig,['code','id','customer','seq']);
             fetchSyncInfoWindow = new BrowserWindow(invisibleWindowOption);
             fetchSyncInfoWindow.loadURL(fetchSyncInfoUrl);
-            fetchSyncInfoWindow.webContents.on('did-finish-load',function(){ fetchSyncInfoWindow.webContents.send('client-code',ssObj,currentWindow.id); })
+            fetchSyncInfoWindow.webContents.on('did-finish-load',function(){ fetchSyncInfoWindow.webContents.send('client-code',ssObj,currentWindow.id); });
             fetchSyncInfoWindow.on('closed', function(){ fetchSyncInfoWindow = null; })
         }
 
