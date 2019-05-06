@@ -6,8 +6,8 @@ const { app,BrowserWindow,ipcMain,Menu,Tray } = electron;
 
 process.env.NODE_ENV = 'development';
 
-let configFile = 'ss-config.json', dbFile = 'ss-up.enc', syncFile = 'sync-info.json',
-    userPath, configFilePath, DBFilePath, syncFilePath, ssConfig = null, mysqlParams = null, syncInfo = null,
+let configFile = 'ss-config.json', dbFile = 'ss-up.enc', syncFile = 'sync-info.json', uuidFile = 'uuid',
+    userPath, configFilePath, DBFilePath, syncFilePath, uuidFilePath, ssConfig = null, mysqlParams = null, syncInfo = null,
     mainWindowOptions = { frame: false, width: 600, height: 400 }, browserWindow = null, tray = null,
     configWindowUrl = url.format({ pathname: path.join(__dirname, 'loadConfigWindow.html'), protocol: 'file:', slashes: true }),
     initWindowUrl = url.format({ pathname: path.join(__dirname, 'initWindow.html'), protocol: 'file:', slashes: true }),
@@ -16,7 +16,8 @@ let configFile = 'ss-config.json', dbFile = 'ss-up.enc', syncFile = 'sync-info.j
 
 app.on('ready',() => {
     userPath = app.getPath('userData');
-    configFilePath = path.join(userPath,configFile); DBFilePath = path.join(userPath,dbFile); syncFilePath = path.join(userPath,syncFile);
+    configFilePath = path.join(userPath,configFile); DBFilePath = path.join(userPath,dbFile);
+    uuidFilePath = path.join(userPath,uuidFile); syncFilePath = path.join(userPath,syncFile);
     browserWindow = new BrowserWindow(mainWindowOptions);
     fs.access(configFilePath, fs.constants.R_OK, (error) => {
         if (error) launchConfigWindow();
@@ -26,6 +27,7 @@ app.on('ready',() => {
 
 
 ipcMain.on('config-file-path',function(event){ event.returnValue = configFilePath; });
+ipcMain.on('uuid-file-path',function(event){ event.returnValue = uuidFilePath; });
 ipcMain.on('quit-app',function(){ app.quit() });
 ipcMain.on('window-all-closed',function(){ if(tray) tray.destroy(); });
 ipcMain.on('launch-init',launchInitWindow);
@@ -35,7 +37,7 @@ ipcMain.on('get-db-file',function(event){ event.returnValue = DBFilePath; });
 ipcMain.on('set-connection',function(event,params){ mysqlParams = params; });
 ipcMain.on('set-table-info',function(event,response){ syncInfo = response; });
 ipcMain.on('start-sync',function(){ browserWindow.loadURL(mainWindowUrl); });
-ipcMain.on('get-all-config',function(event){ event.returnValue = { ssConfig,mysqlParams,syncInfo,syncFilePath,userPath } });
+ipcMain.on('get-all-config',function(event){ event.returnValue = { ssConfig,mysqlParams,syncInfo,syncFilePath,userPath,uuidFilePath } });
 ipcMain.on('minimize-to-tray',function(event){ event.returnValue = minimizeToTray(); });
 ipcMain.on('open-from-tray',function(event){ if(tray){ tray.destroy(); tray = null; } event.returnValue = tray; });
 

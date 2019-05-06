@@ -6,19 +6,16 @@
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
     <script>
-        const fs = require('fs'); let configFilePath = null;
-        const electron = require('electron'); const $ = require('jquery');
-        let parentWindow, currentWindow;
+        const fs = require('fs'), electron = require('electron'), $ = require('jquery'), uuidv4 = require('uuid/v4');
+        let parentWindow, currentWindow, configFilePath = null, uuidFilePath = null;
 
         let { ipcRenderer } = electron;
 
-        ipcRenderer.on('ss-window-ready',function(event,parentBrowserID){
-        });
+        ipcRenderer.on('ss-window-ready',function(event,parentBrowserID){});
 
         window.onload = function(){
-            parentWindow = electron.remote.BrowserWindow.getFocusedWindow();
-            currentWindow = electron.remote.getCurrentWindow();
-            configFilePath = ipcRenderer.sendSync('config-file-path');
+            parentWindow = electron.remote.BrowserWindow.getFocusedWindow(); currentWindow = electron.remote.getCurrentWindow();
+            configFilePath = ipcRenderer.sendSync('config-file-path'); uuidFilePath = ipcRenderer.sendSync('uuid-file-path');
             $('#config-div').removeClass('d-none');
         };
         loadFile = function(e){
@@ -31,7 +28,10 @@
                 if(!customer || !seq || !url_interact || status !== 'Active') return alert('Error configuring ePlus Smart Sale');
                 fs.writeFile(configFilePath,content,function(error){
                     if(error) return alert('Error in writing config file..');
-                    ipcRenderer.send('launch-init');
+                    fs.writeFile(uuidFilePath,uuidv4(),function(error){
+                        if(error) return alert('Error in writing uuid file..');
+                        ipcRenderer.send('launch-init');
+                    });
                 });
             };
             Reader.readAsText(File);
