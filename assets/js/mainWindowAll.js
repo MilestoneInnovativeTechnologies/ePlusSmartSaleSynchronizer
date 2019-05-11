@@ -1,4 +1,4 @@
-const { ipcRenderer,remote } = require('electron'), { dialog } = remote, currentWindow = remote.getCurrentWindow(),
+const { ipcRenderer,remote } = require('electron'), { dialog,BrowserWindow } = remote, currentWindow = remote.getCurrentWindow(),
     $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), url = require('url'), path = require('path'),
     protocol = 'http', hostname = 'mit', pathname = 'api/ss/sync/table/{id}/set', directionMap = { up:'to',down:'from',from:'down',to:'up' }
 ;
@@ -28,7 +28,7 @@ function setupApp(config){
     $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application);
     fs.readFile(uuidFilePath,function(error,uuid){
         if(error) log('Error in reading uuid file!!');
-        client = uuid;
+        client = uuid.toString();
     })
 }
 
@@ -40,12 +40,13 @@ function setupMysqlConnection(mysqlParams){
 function initTable(data){
     const { id,table,last_updated,last_created,sync_to_ttl,sync_from_ttl } = data, timeNow = getTimeNow();
     let source = { id, updated: last_updated, created: last_created, to:parseInt(sync_to_ttl), from:parseInt(sync_from_ttl) };
+    //let source = { id, updated: last_updated, created: last_created, to:5, from:parseInt(sync_from_ttl) };
     if(!_.has(tblData,table)) tblData[table] = source; else _.assign(tblData[table],source);
     if(!_.has(tblData[table],'primary_key') || _.isEmpty(tblData[table].primary_key))
         getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
     if(!_.has(tblData[table],'fields') || _.isEmpty(tblData[table].fields))
         getTableFields(table).then(function(Obj){ _.forEach(Obj,(fields,table) => updateTblData(table,'fields',fields)) });
-    addToProcessQueue(timeNow,[table,'up']);// addToProcessQueue(timeNow,[table,'down']);
+    addToProcessQueue(timeNow,[table,'up']); addToProcessQueue(timeNow,[table,'down']);
 }
 
 
@@ -91,42 +92,70 @@ function doProcessQueue(){
     inWork = true; updateWorking(); setWorkingDisplay(data[0],data[1]);
     processTable(data[0],data[1]);
 }
-
-function processTable(table,direction) {
-    log('Processing Table: ' + table + ' -> ' + direction);
-    window[direction + 'Sync'].call(null,table);
-}
 function downSync(table){
-    inWork = false;
+    let ajaxConfig = _.assign({ context:{ table } },getActivityUploadConfig(table));
+    $.ajax(ajaxConfig).done(function(response){
+        if(response && response.length) handlePostActivityUploadResponse(response,function(Activities){
+            return reQueueSyncForTable(_.head(Activities).table,'down');
+        }); else return reQueueSyncForTable(this.table,'down');
+    }).fail(function(xhr,statusText){
+        log('ERROR while downloading activity :: ' + statusText + '. Skipping ' + this.table);
+        return reQueueSyncForTable(this.table,'down');
+    })
 }
 
-function upSync(table){
+async function upSync(table,callback){
     let detail = tblData[table], Activity = [], { created,updated,primary_key } = detail;
     if(isOneTimeTable(detail)){
-        getActivity(table,'update_or_create',primary_key,getSyncAllQuery(table))
+        await getActivity(table,'update_or_create',primary_key,getSyncAllQuery(table))
             .then((activity)=>{
                 if(activity && Activity.push(activity) && !_.isEmpty(Activity)) return uploadActivityData(table,Activity,postActivityUpload);
                 log('No new data to sync for, ' + table); inWork = false;
             })
             .catch((errorText)=>{ log(errorText); inWork = false; });
+        if(callback) callback.call();
     } else {
-        getActivity(table,'create',primary_key,created ? getSyncCreatedQuery(table,created) : getSyncAllQuery(table))
+        await getActivity(table,'create',primary_key,created ? getSyncCreatedQuery(table,created) : getSyncAllQuery(table))
             .then((activity)=>{
                 if(activity) Activity.push(activity);
                 if(updated){
                     getActivity(table,'update',primary_key,getSyncUpdatedQuery(table,created,updated))
-                        .then((activity)=>{ if(activity && Activity.push(activity) && !_.isEmpty(Activity)) return uploadActivityData(table,Activity,postActivityUpload); log('No new updates to sync for, ' + table); return reQueueSyncForTable(table,'to') })
+                        .then((activity)=>{ if(activity && Activity.push(activity) && !_.isEmpty(Activity)) return uploadActivityData(table,Activity,postActivityUpload); log('No new updates to sync for, ' + table); return reQueueSyncForTable(table,'to'); })
                         .catch((errorText)=>{ log(errorText); if(!_.isEmpty(Activity)) return uploadActivityData(table,Activity,postActivityUpload); log('No new updates to sync for, ' + table); return reQueueSyncForTable(table,'to'); });
                 } else {
                     if(!_.isEmpty(Activity)) return uploadActivityData(table,Activity,postActivityUpload);
-                    log('No new data to sync for, ' + table); return reQueueSyncForTable(table,'to')
+                    log('No new data to sync for, ' + table); return reQueueSyncForTable(table,'to');
                 }
             })
-            .catch((errorText)=>{ log(errorText); return reQueueSyncForTable(table,'to'); });
+            .catch((errorText)=>{ log(errorText); reQueueSyncForTable(table,'to'); });
+        if(callback) callback.call();
     }
 }
 function isOneTimeTable( { fields } ){
     return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE'))
+}
+async function doExecuteQuery(Query){
+    return await new Promise((resolve,reject)=>{
+        mysql.query(Query,(error,results) => {
+            if(error) reject(error);
+            resolve(JSON.parse(JSON.stringify(results)))
+        });
+    });
+}
+async function isRecordExists(table,where){
+    let sql = mysql.format('SELECT * FROM ?? WHERE ?',[table,where]);
+    let results = await doExecuteQuery(sql);
+    return !!results.length;
+}
+async function doInsertRecord(table, primary){
+    let sql = mysql.format('INSERT INTO ?? SET ?',[table,primary]);
+    console.log(sql);
+    // return await doExecuteQuery(sql);
+}
+async function doUpdateRecord(table, record, primary){
+    let sql = mysql.format('UPDATE ?? SET ? WHERE ?',[table,record,primary]);
+    console.log(sql);
+    // return await doExecuteQuery(sql);
 }
 function executeQuery(table,Query){
     return new Promise(function(resolve,reject){
@@ -165,7 +194,7 @@ function uploadActivityData(table,activity,callback){
 function getFormData(table,data){ let form_data = new FormData(); form_data.append('file',new Blob([JSON.stringify(data)],{ type:'application/json' }),[table,'json'].join('.')); return form_data; }
 function getActivityUploadConfig(table){ return { url:path.join(ssConfig.url_interact,'sync',client,table),type:'post',enctype:'multipart/form-data',processData:false,contentType:false } }
 function postActivityUpload(response,table,Activity){
-    console.log(response);
+    if(response && response.length) handlePostActivityUploadResponse(response);
     let latest_update = null, latest_create = null;
     _.forEach(Activity,(activity) => {
         activityUpwardCompleteLog(activity);
@@ -204,8 +233,26 @@ function getSyncTableSetUrl(id){
 }
 function reQueueSyncForTable(table,direction){
     let delay = parseInt(tblData[table][direction]); if(!delay || isOneTimeTable(tblData[table])) return inWork = false;
-    addToProcessQueue(delay + getTimeNow(),[table,directionMap[direction]]);
+    if(!inQueue(table,directionMap[direction])) addToProcessQueue(delay + getTimeNow(),[table,directionMap[direction]]);
     log('Table: ' + table + ', added to Queue'); return inWork = false;
+}
+function inQueue(table,direction){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === direction)); }
+
+function handlePostActivityUploadResponse(response,callback){
+    let jsonResponse = JSON.parse(response); if(!jsonResponse || _.isEmpty(jsonResponse)) return;
+    upSync(_.head(jsonResponse).table,function(){
+        _.forEach(jsonResponse,function(activity){
+            if(_.isEmpty(activity.data)) return;
+            let { table,data,mode } = activity; let { primary_key } = tblData[table];
+            log('Received some updates while uploading'); log([table,mode,data.length,'records'].join(' -> '));
+            _.forEach(data,function(record){
+                let primary = _.pick(record,primary_key);
+                if(isRecordExists(table,primary)) doInsertRecord(table,record);
+                else doUpdateRecord(table,record,primary);
+            })
+        });
+        if(callback) callback.call(null,jsonResponse)
+    });
 }
 
 
@@ -213,13 +260,14 @@ function reQueueSyncForTable(table,direction){
 
 
 
+
 function updateWorking(){ clearTimeout(workTimeOut); $('.app-title').addClass('working'); workTimeOut = setTimeout(function(){ $('.app-title').removeClass('working'); },continueInterval); }
+function setWorkingDisplay(text,dir){ let opDir = { up:'down',down:'up','':['up','down'] }; $('.queue-working').text(text).addClass(dir).removeClass(opDir[dir]); }
 function log(text) { $('<pre>').text(`${(new Date().getTime()).toString().substr(7)} :: ${text}`).slideUp().prependTo('#log').slideDown(200).parent('#log').children(`:gt(${maxLog})`).remove(); }
 function send(channel,args){ ipcRenderer.send.apply(null,[channel,args]) }
 function quitApp(){ dialog.showMessageBox(quitConfirmOptions,(index) => { if(index) send('quit-app'); }) }
 function alterContinue(){ doContinue = !doContinue; $('#alter_continue').text((doContinue?'Pause':'Continue') + ' Sync') }
 function minimizeToTray(){ send('minimize-to-tray'); }
-function setWorkingDisplay(text,dir){ let opDir = { up:'down',down:'up','':['up','down'] }; $('.queue-working').text(text).addClass(dir).removeClass(opDir[dir]); }
 function workDependentChanges(){
     $('#minimize_tray')[doContinue?'removeClass':'addClass']('d-none');
     if(!inWork) {

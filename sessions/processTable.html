@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<!--suppress ALL -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Processing Table :: </title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), { BrowserWindow, } = remote, currentWindow = remote.getCurrentWindow(), $ = require('jquery'), _ = require('lodash'), db = require('mysql'), path = require('path'),
+            executeQueryWindowConf = { width:300, height:300, show:false }, executeQueryWindowUrl = path.join(__dirname,'getQueryResult.html'),
+            uploadActivityWindowConf = executeQueryWindowConf, uploadActivityWindowUrl = path.join(__dirname,'doUploadActivity.html'),
+            updateDateWindowConf = executeQueryWindowConf, updateDateWindowUrl = path.join(__dirname,'updateDates.html')
+            importActivityWindowConf = executeQueryWindowConf, importActivityWindowUrl = path.join(__dirname,'importActivity.html'),
+            downloadActivityWindowConf = executeQueryWindowConf, downloadActivityWindowUrl = path.join(__dirname,'doDownloadActivity.html')
+        ;
+        let table,direction,tblData,created,updated,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,
+            parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,
+            executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow,
+            Activity = [], latestDates = { update:null,create:null }, modeDateFieldMap = { update:'MODIFIED_DATE',create:'CREATED_DATE' };
+    </script>
+    <script>
+        ipcRenderer.on('config',function(event,dataObj){
+            table = dataObj.table; direction = dataObj.direction; tblData = dataObj.tblData[table]; syncFile = dataObj.syncFile;
+            parentWindow = BrowserWindow.fromId(dataObj.parentWindowId)
+            created = tblData.created; updated = tblData.updated; primary_key = tblData['primary_key']; fields = tblData["fields"];
+            mysqlParams = dataObj.mysqlParams; setupMysqlConnection();
+            $('title').append(table); oneTime = isOneTimeTable(); url = dataObj.url; id = dataObj.id;
+            if(direction === 'up' ) initUpProcess(); else initDownProcess();
+        });
+
+        ipcRenderer.on('log',function (event,text){ log(text) });
+        ipcRenderer.on('query-result',function (event,fn,args){ destroyWindow(executeQueryWindow); window[fn].apply(window[fn],args); });
+        ipcRenderer.on('failed-upload-activity',function (){ destroyWindow(uploadActivityWindow); log('Skipping..'); completeProcessingTable(); });
+        ipcRenderer.on('done-upload-activity',function (event,response){ destroyWindow(uploadActivityWindow); postUploadActivities(response); });
+        ipcRenderer.on('update-date-success',function (event,response){ destroyWindow(updateDateWindow); writeTableDates(); });
+        ipcRenderer.on('update-date-failed',function (){ log('Skipping..'); destroyWindow(updateDateWindow); completeProcessingTable(); });
+        ipcRenderer.on('failed-download-activity',function (){ destroyWindow(downloadActivityWindow); log('Skipping..'); completeProcessingTable(); });
+        ipcRenderer.on('done-download-activity',function (event,response){ destroyWindow(downloadActivityWindow); postDownloadActivities(response); });
+
+        function send(channel,args){ parentWindow.send(channel,args); }
+        function log(text,fn){ send('log',`${table}(${direction}) :: ${text}`); if(fn) window[fn].call(); }
+        function completeProcessingTable(){
+            if(_.some([executeQueryWindow,uploadActivityWindow,updateDateWindow,importActivityWindow,downloadActivityWindow],(win) => !_.isNil(win))){
+                clearTimeout(reCloseTimeOut); reCloseTimeOut = setTimeout(completeProcessingTable,reCloseDelay);
+            } else { log('Finished..'); send('complete-process-table',[table,direction]); } }
+    </script>
+    <script>
+        function isOneTimeTable(){ return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')); }
+        function getMaxOfDateField(collection,field){
+            let dateObject = _.mapKeys(_.map(collection,field),dText => new Date(dText).getTime());
+            return _.get(dateObject,_.max(_.keys(dateObject)))
+        }
+        function isJsonString(string){
+            try{ JSON.parse(string) } catch(e) { return false; }
+            return true;
+        }
+    </script>
+    <script>
+        function setupMysqlConnection(){ mysql = db.createConnection(mysqlParams); }
+        function getSyncCreatedQuery(){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC",[table,'CREATED_DATE',created,'CREATED_DATE']); }
+        function getSyncUpdatedQuery(){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? AND ?? <= ? ORDER BY ?? ASC",[table,'MODIFIED_DATE',updated,'CREATED_DATE',created,'MODIFIED_DATE']); }
+        function getSyncAllQuery(){ return mysql.format("SELECT * FROM ??",[table]); }
+    </script>
+    <script>
+        function initUpProcess(){
+            log('Processing');
+            if(isOneTimeTable()) return processOneTimeSync();
+            if(created) processSync('created');
+            else if(updated) processSync('updated');
+            else processOneTimeSync();
+        }
+        function initDownProcess(){
+            log('Processing');
+            loadDownloadActivityWindow();
+        }
+        function processOneTimeSync(){
+            log('One Time Sync'); mode = 'update_or_create';
+            loadExecuteQueryWindow(getSyncAllQuery(),'oneTimeSyncQueryResult');
+        }
+        function processSync(mode){
+            log('Finding  '+ mode);
+            loadExecuteQueryWindow((mode === 'created') ? getSyncCreatedQuery() : getSyncUpdatedQuery(),mode + 'SyncQueryResult')
+        }
+        function startProcessingActivity(){
+            if(!Activity || _.isEmpty(Activity)) return send('complete-process-table');
+            log(`${Activity.length} activities found!!`);
+            uploadActivityData(Activity);
+        }
+    </script>
+    <script>
+        function oneTimeSyncQueryResult(error,rowsPack,fieldPack) {
+            if(error) log('Error while fetching data, skipping !!','startProcessingActivity')
+            let result = JSON.parse(JSON.stringify(rowsPack)); if(!result.length) return log('No data','startProcessingActivity');
+            log(`${result.length} records to mode update_or_create`); Activity.push(wrapActivity(result,'update_or_create')); startProcessingActivity();
+        }
+        function createdSyncQueryResult(error,rowsPack,fieldPack){
+            if(error) log('Error while fetching data, skipping !!','startProcessingActivity')
+            let result = JSON.parse(JSON.stringify(rowsPack)); if(!result.length) return log('No data','startProcessingActivity');
+            log(`${result.length} records to mode create`); Activity.push(wrapActivity(result,'create'));
+            if(updated) processSync('updated'); else startProcessingActivity();
+        }
+        function updatedSyncQueryResult(error,rowsPack,fieldPack){
+            if(error) log('Error while fetching data, skipping !!','startProcessingActivity')
+            let result = JSON.parse(JSON.stringify(rowsPack));
+            log(`${result.length} records to mode update`);
+            if(result.length) Activity.push(wrapActivity(result,'create')); startProcessingActivity();
+        }
+    </script>
+    <script>
+        function wrapActivity(data,mode){ return { table,mode,primary_key,data }; }
+        function uploadActivityData(Activity){ loadUploadActivityWindow(Activity); }
+    </script>
+    <script>
+        function destroyWindow(destroyWindow) { if(destroyWindow && !destroyWindow.isDestroyed()) destroyWindow.destroy(); }
+        function loadExecuteQueryWindow(query,success){
+            let sendData = { mysqlParams,query,parentWindowId:currentWindow.id,success };
+            executeQueryWindow = new BrowserWindow(executeQueryWindowConf).on('closed',function(event){ executeQueryWindow = null });
+            if(executeQueryWindow){
+                executeQueryWindow.loadURL(executeQueryWindowUrl);
+                executeQueryWindow.webContents.on('did-finish-load',function(){ executeQueryWindow.webContents.send('data',sendData); });
+            }
+        }
+        function loadUploadActivityWindow(activity){
+            let sendData = { url,parentWindowId:currentWindow.id,activity,table };
+            uploadActivityWindow = new BrowserWindow(uploadActivityWindowConf).on('closed',() => uploadActivityWindow = null );
+            uploadActivityWindow.loadURL(uploadActivityWindowUrl);
+            uploadActivityWindow.webContents.on('did-finish-load',function(){ uploadActivityWindow.webContents.send('data',sendData); });
+        }
+        function loadDateUpdateWindow(date){
+            let sendData = { parentWindowId:currentWindow.id,date,id };
+            updateDateWindow = new BrowserWindow(updateDateWindowConf).on('closed',() => updateDateWindow = null );
+            updateDateWindow.loadURL(updateDateWindowUrl);
+            updateDateWindow.webContents.on('did-finish-load',function(){ updateDateWindow.webContents.send('data',sendData); });
+        }
+        function loadImportActivityWindow(activity){
+            let sendData = { parentWindowId:currentWindow.id,activity,mysqlParams };
+            importActivityWindow = new BrowserWindow(importActivityWindowConf).on('closed',() => importActivityWindow = null );
+            importActivityWindow.loadURL(importActivityWindowUrl);
+            importActivityWindow.webContents.on('did-finish-load',function(){ importActivityWindow.webContents.send('data',sendData); });
+        }
+        function loadDownloadActivityWindow(){
+            let sendData = { url,parentWindowId:currentWindow.id,table };
+            downloadActivityWindow = new BrowserWindow(downloadActivityWindowConf).on('closed',() => downloadActivityWindow = null );
+            downloadActivityWindow.loadURL(downloadActivityWindowUrl);
+            downloadActivityWindow.webContents.on('did-finish-load',function(){ downloadActivityWindow.webContents.send('data',sendData); });
+        }
+    </script>
+    <script>
+        function keepActivityDates(){
+            log('Setting latest dates');
+            _.forEach(Activity,(activity) => {
+                if(!oneTime){
+                    if(mode === 'update_or_create')
+                        _.forEach(modeDateFieldMap,(field,key) => latestDates[key] = _.max([getMaxOfDateField(activity.data,field),latestDates[key]]));
+                    else
+                        latestDates[activity.mode] = _.max([getMaxOfDateField(activity.data,modeDateFieldMap[activity.mode]),latestDates[activity.mode]]);
+                }
+            });
+        }
+        function postUploadActivities(response){
+            keepActivityDates(); updateTableDatesWithServer();
+            if(!response || !response.length) completeProcessingTable();
+            let json = (_.isString(response) && isJsonString(response)) ? JSON.parse(response) : ( _.isPlainObject(response) ? response : []);
+            if(!_.isEmpty(json)) handleUploadResponseActivity(json);
+            else completeProcessingTable();
+        }
+        function postDownloadActivities(response){
+            if(!response || !response.length) return;
+            let json = (_.isString(response) && isJsonString(response)) ? JSON.parse(response) : ( _.isPlainObject(response) ? response : []);
+            if(_.isEmpty(json)) return completeProcessingTable();
+            Activity = json; keepActivityDates(); loadImportActivityWindow(Activity);
+        }
+        function handleUploadResponseActivity(activity){
+            loadImportActivityWindow(activity)
+        }
+    </script>
+    <script>
+        function updateTableDatesWithServer(){ loadDateUpdateWindow(latestDates) }
+    </script>
+    <script>
+        function writeTableDates() {
+            if(latestDates.update) updateTblData(table,'updated',latestDates.update,function(){
+                if(latestDates.create) updateTblData(table,'created',latestDates.create,completeProcessingTable);
+                else completeProcessingTable();
+            }); else if(latestDates.create) updateTblData(table,'created',latestDates.create,completeProcessingTable);
+            else completeProcessingTable();
+        }
+        function updateTblData(table,property,value,callback){
+            if(!_.has(tblData,table)) tblData[table] = new Object({});
+            if(!_.has(tblData[table],property)) tblData[table][property] = null;
+            tblData[table][property] = value; saveTblData(callback);
+        }
+        function saveTblData(callback){
+            fs.writeFile(syncFile,JSON.stringify(tblData),function(error){
+                if(!error) return (callback) ? callback.call() : null;
+                doContinue = false; log('Error in saving sync info file!!');
+            });
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload Activity</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), $ = require('jquery');
+        let table, url, activity, parentWindow;
+        ipcRenderer.on('data',function(event,data){
+            table = data.table; url = data.url; activity = data.activity; parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
+            initProcess();
+        });
+        function send(channel,args){ parentWindow.send(channel,args); }
+        function log(text,fn){ send('log',`Upload :: ${text}`); if(fn) window[fn].call(); }
+    </script>
+    <script>
+        function getFormData(){ let form_data = new FormData(); form_data.append('file',new Blob([JSON.stringify(activity)],{ type:'application/json' }),[table,'json'].join('.')); return form_data; }
+        function getActivityUploadConfig(){ return { url,type:'post',enctype:'multipart/form-data',processData:false,contentType:false } }
+    </script>
+    <script>
+        function initProcess(){
+            log('Uploading!');
+            let data = getFormData();
+            let ajaxConfig = Object.assign({ data },getActivityUploadConfig());
+            $.ajax(ajaxConfig).done(function(response){
+                log('Upload Success!!');
+                send('done-upload-activity',[response])
+            }).fail(function(xhr,statusText){
+                log('Upload Failed!! :: '+statusText);
+                send('failed-upload-activity')
+            })
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>

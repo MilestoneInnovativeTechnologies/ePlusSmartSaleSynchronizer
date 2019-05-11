@@ -6,7 +6,149 @@
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/mainWindow.css">
-    <script src="assets/js/mainWindowAll.js"></script>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), { dialog,BrowserWindow } = remote, currentWindow = remote.getCurrentWindow(),
+            $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'),
+            maxLog = 15, continueInterval = 1500, processTableWindowConfig = { width:300, height:300, show:false },
+            quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] },
+            directionMap = { up:'to',down:'from',from:'down',to:'up' };
+        let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
+            inWork = false, processTableWindow = null,workTimeOut = 0,interactUrl;
+
+        ipcRenderer.on('log',function(event,text){ log(text); });
+        ipcRenderer.on('complete-process-table',function(event,tblDetails){
+            if(processTableWindow && !processTableWindow.isDestroyed()) processTableWindow.destroy();
+            processTableWindow = null;
+            if(tblDetails && !_.isEmpty(tblDetails))reQueueSyncForTable(tblDetails[0],directionMap[tblDetails[1]]);
+        });
+
+        $(function(){
+            initApp(ipcRenderer.sendSync('get-all-config'));
+            setInterval(doProcessQueue,continueInterval);
+        });
+        function initApp(configs){
+            log('Initializing sync..');
+            syncInfo = configs.syncInfo; syncFile = configs.syncFilePath; userPath = configs.userPath; uuidFilePath = configs.uuidFilePath;
+            mysqlParams = _.assign({ dateStrings:true },configs.mysqlParams);
+            setupApp(configs.ssConfig); setupMysqlConnection();
+            loadTblData(function(){ _.forEach(syncInfo,initTable); });// addToProcessQueue(getTimeNow(),['setup','up']);
+        }
+        function setupApp(config){
+            ssConfig = config;
+            $('#company_name').text(ssConfig.name); $('#application').text(ssConfig.application);
+            fs.readFile(uuidFilePath,function(error,uuid){
+                if(error) log('Error in reading uuid file!!');
+                client = uuid.toString();
+                interactUrl = path.join(ssConfig.url_interact,'sync',client);
+            })
+        }
+        function loadTblData(callback){
+            fs.access(syncFile,function(error){
+                if(error) return callback.call(callback);
+                fs.readFile(syncFile,function(error,data){
+                    if(!error) tblData = JSON.parse(data.toString());
+                    callback.call(callback);
+                })
+            });
+        }
+    </script>
+    <script>
+        function log(text) { $('<pre>').text(`${(new Date().getTime()).toString().substr(7)} :: ${text}`).slideUp().prependTo('#log').slideDown(200).parent('#log').children(`:gt(${maxLog})`).remove(); }
+        function workDependentChanges(){
+            $('#minimize_tray')[doContinue?'removeClass':'addClass']('d-none');
+            if(!inWork) {
+                $('#alter_continue').prop('disabled',false);
+                $('#quit_app')[doContinue?'addClass':'removeClass']('d-none');
+                setWorkingDisplay('','');
+            }
+        }
+        function quitApp(){ dialog.showMessageBox(quitConfirmOptions,(index) => { if(index) send('quit-app'); }) }
+        function alterContinue(){ doContinue = !doContinue; $('#alter_continue').text((doContinue?'Pause':'Continue') + ' Sync') }
+        function minimizeToTray(){ send('minimize-to-tray'); }
+        function updateWorking(){ clearTimeout(workTimeOut); $('.app-title').addClass('working'); workTimeOut = setTimeout(function(){ $('.app-title').removeClass('working'); },continueInterval*3); }
+        function setWorkingDisplay(text,dir){ let opDir = { up:'down',down:'up','':['up','down'] }; $('.queue-working').text(text).addClass(dir).removeClass(opDir[dir]); }
+        function initTable(data){
+            const { id,table,last_updated,last_created,sync_to_ttl,sync_from_ttl } = data, timeNow = getTimeNow();
+            let source = { id, updated: last_updated, created: last_created, to:parseInt(sync_to_ttl), from:parseInt(sync_from_ttl) };
+            //let source = { id, updated: last_updated, created: last_created, to:5, from:parseInt(sync_from_ttl) };
+            if(!_.has(tblData,table)) tblData[table] = source; else _.assign(tblData[table],source);
+            if(!_.has(tblData[table],'primary_key') || _.isEmpty(tblData[table].primary_key))
+                getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
+            if(!_.has(tblData[table],'fields') || _.isEmpty(tblData[table].fields))
+                getTableFields(table).then(function(Obj){ _.forEach(Obj,(fields,table) => updateTblData(table,'fields',fields)) });
+            addToProcessQueue(timeNow,[table,'up']); addToProcessQueue(timeNow,[table,'down']);
+        }
+        function send(channel,args){ ipcRenderer.send.apply(null,[channel,args]) }
+    </script>
+    <script>
+        function setupMysqlConnection(){
+            mysql = db.createConnection(mysqlParams);
+            mysql.connect(function(error){ if(!error) return log('Database connection established..'); mysql = null; log('Could not establish database connection.'); });
+        }
+        function getTablePrimaryFields(table){
+            return new Promise(function(resolve,reject){
+                mysql.query('SHOW CREATE TABLE ??',table,function(error,result){
+                    let CreateTable = _.get(_.head(result),'Create Table'), pattern = new RegExp(/PRIMARY KEY \(`(.*)`\)/), split = '`,`';
+                    if(error) return reject(`Error while trying to get primary fields from table: ${table}`);
+                    return resolve(_.zipObject([table],[pattern.exec(CreateTable)[1].split(split)]));
+                });
+            })
+        }
+        function getTableFields(table){
+            return new Promise(function(resolve,reject){
+                mysql.query('SELECT * FROM ?? LIMIT 1',table,function(error, result, fieldPackets){
+                    if(error) return reject(`Error while trying to get field from table: ${table}`);
+                    return resolve(_.zipObject([table],[getFieldArrayFromFieldPackets(fieldPackets)]))
+                })
+            })
+        }
+        function getFieldArrayFromFieldPackets(fieldPackets){ return _.map(fieldPackets,'name'); }
+    </script>
+    <script>
+        function getTimeNow(){ return parseInt((new Date().getTime()/1000).toString().substr(4)); }
+        function updateTblData(table,property,value){
+            if(!_.has(tblData,table)) tblData[table] = new Object({});
+            if(!_.has(tblData[table],property)) tblData[table][property] = null;
+            tblData[table][property] = value; saveTblData();
+        }
+        function saveTblData(){
+            fs.writeFile(syncFile,JSON.stringify(tblData),function(error){
+                if(!error) return; doContinue = false;
+                log('Error in saving sync info file!!');
+            });
+        }
+        function isOneTimeTable( { fields } ){ return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) }
+        function reQueueSyncForTable(table,direction){
+            let delay = parseInt(tblData[table][direction]); if(!delay || isOneTimeTable(tblData[table])) return inWork = false;
+            if(!inQueue(table,directionMap[direction])) addToProcessQueue(delay + getTimeNow(),[table,directionMap[direction]]);
+            log('Table: ' + table + ', added to Queue'); return inWork = false;
+        }
+        function inQueue(table,direction){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === direction)); }
+        function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
+        function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); }
+        function getQueueItem(text,direction,id){ return $('<a>').addClass(['queue-item',direction,id]).text(text); }
+        function displayProcessQueue(){ let queueDiv = $('#queue'); $('.queue-item',queueDiv).remove(); _.forEach(processQueue,(data,id) => { queueDiv.append(getQueueItem(data[0],data[1],id)); }); }
+        function haveQueueEarlierThan(num){ let first = _.head(_.keys(processQueue)); return !!(first && parseInt(first) <= parseInt(num)); }
+        function pullFirstFromQueue(){ let first = _.head(_.keys(processQueue)), data = null; if(first) data = processQueue[first]; delete processQueue[first]; removeQueueDisplay(first); return data; }
+        function removeQueueDisplay(no){ $('.queue-item.'+no).slideUp(function(){ this.remove() }); }
+    </script>
+    <script>
+        function doProcessQueue(){
+            let timeNow = getTimeNow(); workDependentChanges();
+            if(!doContinue || inWork || !haveQueueEarlierThan(timeNow)) return;
+            let data = pullFirstFromQueue(); if(!data) return;
+            inWork = true; updateWorking(); setWorkingDisplay(data[0],data[1]);
+            processTableWindow = new BrowserWindow(processTableWindowConfig).on('closed', function(){ processTableWindow = null; inWork = false; });
+            processTableWindow.loadURL(path.join(__dirname,'sessions','processTable.html'));
+            processTableWindow.webContents.on('did-finish-load',function(){
+                processTableWindow.webContents.send('config',{
+                    table:data[0],direction:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
+                    mysqlParams,url:path.join(interactUrl,data[0]),id:tblData[data[0]].id
+                });
+            });
+        }
+
+    </script>
 </head>
 <body class="bg-light mt-2">
 <div class="container-fluid">

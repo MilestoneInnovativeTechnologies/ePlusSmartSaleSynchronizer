@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Query Execution</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), db = require('mysql');
+        let mysql,onSuccess,parentWindow;
+    </script>
+    <script>
+        ipcRenderer.on('data',function(event,data){
+            mysql = db.createConnection(data.mysqlParams); parentWindow = remote.BrowserWindow.fromId(data.parentWindowId); onSuccess = data.success;
+            mysql.connect(); executeQuery(data.query);
+        })
+    </script>
+    <script>
+        function executeQuery(query){
+            mysql.query(query,function(error,rowsPackets,fieldPackets) {
+                parentWindow.send('query-result', onSuccess, [error, rowsPackets, fieldPackets]);
+            })
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>

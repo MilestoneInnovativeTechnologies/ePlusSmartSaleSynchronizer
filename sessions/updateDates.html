@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Update Table Dates With Server</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), $ = require('jquery'), url = require('url'),
+            protocol = 'http', hostname = 'milestoneit.net', pathname = 'api/ss/sync/table/{id}/set'
+        ;
+        let id, dateData, link, parentWindow;
+        ipcRenderer.on('data',function(event,data){
+            parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
+            id = data.id; dateData = data.date;
+            link = url.format({ protocol,hostname,pathname:pathname.replace('{id}',id) });
+            startUpload();
+        });
+        function send(channel,args){ parentWindow.send(channel,args); }
+        function log(text,fn){ send('log',`Update Dates :: ${text}`); if(fn) window[fn].call(); }
+    </script>
+    <script>
+        function startUpload(){
+            log('Uploading');
+            $.getJSON(link,dateData,function (response){
+                log('Success!!'); send('update-date-success',[response]);
+            }).fail(function(xhr,statusText){
+                log('Failed, '+statusText); send('update-date-failed');
+            });
+        }
+
+
+    </script>
+</head>
+<body>
+
+</body>
+</html>

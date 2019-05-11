@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Download Activity</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), $ = require('jquery');
+        let table, url, parentWindow;
+        ipcRenderer.on('data',function(event,data){
+            table = data.table; url = data.url; parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
+            initProcess();
+        });
+        function send(channel,args){ parentWindow.send(channel,args); }
+        function log(text,fn){ send('log',`Download :: ${text}`); if(fn) window[fn].call(); }
+    </script>
+    <script>
+        function getActivityDownloadConfig(){ return { url,type:'post',enctype:'multipart/form-data',processData:false,contentType:false } }
+    </script>
+    <script>
+        function initProcess(){
+            log('Downloading!');
+            let ajaxConfig = getActivityDownloadConfig();
+            $.ajax(ajaxConfig).done(function(response){
+                log('Download Success!!');
+                send('done-download-activity',[response])
+            }).fail(function(xhr,statusText){
+                log('Download Failed!! :: '+statusText);
+                send('failed-download-activity')
+            })
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>

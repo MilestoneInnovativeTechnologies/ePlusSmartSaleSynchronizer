@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!--suppress ALL -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Import Activity</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), db = require('mysql'), _ = require('lodash');
+        let parentWindow,Activity,mysql, sqlStore = [];
+    </script>
+    <script>
+        ipcRenderer.on('data',function(event,data){
+            parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
+            Activity = data.activity; mysql = db.createConnection(data.mysqlParams); mysql.connect();
+            doStartImport();
+        });
+        function send(channel,args){ parentWindow.send(channel,args); }
+        function log(text,fn){ send('log',`Import Activity :: ${text}`); if(fn) window[fn].call(); }
+    </script>
+    <script>
+        function doStartImport(){
+            log(`${Activity.length} records!`);
+            _.forEach(Activity,(activity,actIdx) => {
+                let { table,mode,primary_key,data } = activity;
+                if(mode === 'update_or_create') return prepareUpdateOrCreateImportSql(table,primary_key,data,actIdx);
+                let template = getTemplateString(mode);
+                _.forEach(data,(record) => {
+                     let formatArray = getSqlFormatArray(table,mode,record,primary_key);
+                     let sql = mysql.format(template,formatArray);
+                     storeSql(sql);
+                })
+            });
+            log('sqlStoreComplete, do implement further coding..');
+        }
+    </script>
+    <script>
+        function getTemplateString(mode){
+            return  (mode === 'create')
+                ? "INSERT INTO ?? SET ?"
+                : "UPDATE ?? SET ? WHERE ?";
+        }
+        function getSqlFormatArray(mode, table, data, pk) {
+            let sets = [table,data];
+            if(mode === 'update'){ sets.push(getConditionObject(data,pk)); }
+            return sets;
+        }
+        function getConditionObject(data,pk){ return _.pick(data,pk); }
+        function doUpdateRecordSql(table, set, where) {
+            let template = getTemplateString('update');
+            return mysql.format(template,[table,set,where]);
+        }
+        function doInsertRecordSql(table, set){
+            let template = getTemplateString('create');
+            return mysql.format(template,[table,set]);
+        }
+    </script>
+    <script>
+        function prepareUpdateOrCreateImportSql(table, primary_key, data, actIdx){
+            _.forEach(data,async (record,recIdx)=> {
+                let where = getConditionObject(record,primary_key);
+                let dataExists = await isDataExists(table,where);
+                let sql = (dataExists) ? doUpdateRecordSql(table,record,where) : doInsertRecordSql(table,record);
+                storeSql(sql);
+            });
+        }
+    </script>
+    <script>
+        async function isDataExists(table,pkValues){
+            return await new Promise(function(resolve){
+                mysql.query(mysql.format("SELECT * FROM ?? WHERE ?",[table,pkValues]),function(error,rows){
+                    if(error || rows.length === 0) return resolve(false);
+                    return resolve(true);
+                })
+            });
+        }
+        function storeSql(sql) { sqlStore.push(sql); }
+    </script>
+</head>
+<body>
+
+</body>
+</html>
