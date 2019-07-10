@@ -5,20 +5,29 @@
     <title>Query Execution</title>
     <script>
         const { ipcRenderer,remote } = require('electron'), db = require('mysql');
-        let mysql,onSuccess,parentWindow;
+        let mysql,onSuccess,parentWindow,queries,queue,results = {};
     </script>
     <script>
         ipcRenderer.on('data',function(event,data){
             mysql = db.createConnection(data.mysqlParams); parentWindow = remote.BrowserWindow.fromId(data.parentWindowId); onSuccess = data.success;
-            mysql.connect(); executeQuery(data.query);
+            mysql.connect(); queries = data.queries; queue = Object.keys(data.queries); executeQuery(0);
         })
     </script>
     <script>
-        function executeQuery(query){
-            mysql.query(query,function(error,rowsPackets,fieldPackets) {
-                parentWindow.send('query-result', onSuccess, [error, rowsPackets, fieldPackets]);
+        function executeQuery(index){
+            let query = queries[queue[index]];
+            mysql.query(query,function(error,rowsPackets) {
+                if(error) results[queue[index]] = false;
+                else  results[queue[index]] = JSON.parse(JSON.stringify(rowsPackets));
+                if(queue[index+1]) return executeQuery(index+1);
+                else return parentWindow.send('query-result', onSuccess, [results]);
             })
         }
+        // function executeQuery(query){
+        //     mysql.query(query,function(error,rowsPackets,fieldPackets) {
+        //         parentWindow.send('query-result', onSuccess, [error, rowsPackets, fieldPackets]);
+        //     })
+        // }
     </script>
 </head>
 <body>
