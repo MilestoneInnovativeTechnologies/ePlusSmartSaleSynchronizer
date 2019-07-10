@@ -5,29 +5,37 @@
     <title>Upload Activity</title>
     <script>
         const { ipcRenderer,remote } = require('electron'), $ = require('jquery');
-        let table, url, activity, parentWindow;
+        const qty = 1000, buffer = 75, Response = [];
+        let table, url, Activity, parentWindow;
+        let current = 0, done = 0, max = Math.ceil((qty/100)*(100+buffer));
         ipcRenderer.on('data',function(event,data){
-            table = data.table; url = data.url; activity = data.activity; parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
-            initProcess();
+            table = data.table; url = data.url; Activity = data.activity; parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
+            log('Uploading!'); doUploadAfter(0);
         });
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`Upload :: ${text}`); if(fn) window[fn].call(); }
     </script>
     <script>
-        function getFormData(){ let form_data = new FormData(); form_data.append('file',new Blob([JSON.stringify(activity)],{ type:'application/json' }),[table,'json'].join('.')); return form_data; }
+        function getFormData(data){ let form_data = new FormData(); form_data.append('file',new Blob([JSON.stringify(data)],{ type:'application/json' }),[table,'json'].join('.')); return form_data; }
         function getActivityUploadConfig(){ return { url,type:'post',enctype:'multipart/form-data',processData:false,contentType:false } }
     </script>
     <script>
-        function initProcess(){
-            log('Uploading!');
-            let data = getFormData();
+        function doUploadAfter(pos){
+            let remaining = Activity[current]['data'].slice(pos).length;
+            if(remaining === 0) return (Activity[++current]) ? doUploadAfter(0) : send('done-upload-activity',Response);
+            let upto = pos + ((remaining > max) ? qty : remaining);
+            uploadActivity([Object.assign({},Activity[current],{ data:Activity[current].data.slice(pos,upto) })],upto);
+        }
+        function uploadActivity(activity,upto){
+            let data = getFormData(activity);
             let ajaxConfig = Object.assign({ data },getActivityUploadConfig());
             $.ajax(ajaxConfig).done(function(response){
-                log('Upload Success!!');
-                send('done-upload-activity',[response])
-            }).fail(function(xhr,statusText){
-                log('Upload Failed!! :: '+statusText);
-                send('failed-upload-activity')
+                log('Success '+upto+'!!');
+                Response.push(response);
+                doUploadAfter(upto);
+            }).fail(function(){
+                log('Failed '+upto+'!!');
+                //doUploadAfter(upto);
             })
         }
     </script>
