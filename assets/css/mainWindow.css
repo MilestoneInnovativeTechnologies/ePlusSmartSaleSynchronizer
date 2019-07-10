@@ -7,3 +7,4 @@ div#main { overflow: hidden; height: 200px; }
 #queue a.queue-working { font-weight: bold !important; height: 15px; }
 #queue a.up { background-image: url("../images/up.png"); }
 #queue a.down { background-image: url("../images/down.png"); }
+#queue a.both { background-image: url("../images/both.png"); }
