@@ -1,20 +1,24 @@
 {
   "name": "sssync",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "ePlus Smart Sale Sync - sync data to local pc to web and vice verse",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-packager ./ sssync --overwrite --asar --platform win32 --icon=assets/icons/win/icon.ico --prune=true --out=builds --version-string.CompanyName=\"Milestone Innovative Technologies\" --version-string.FileDescription=\"ePlus Smart Sale Database Synchronizer\" --version-string.ProductName=\"ePlus Smart Sale Synchronizer\"",
-    "setup": "node setup/setup.js"
+    "setup": "node setup/setup.js",
+    "postinstall": "install-app-deps",
+    "pack": "build --dir",
+    "dist": "build"
   },
   "build": {
     "appId": "sssync",
     "productName": "ePlus Smart Sale Synchronizer",
-    "buildVersion": "0.1.2"
+    "buildVersion": "0.1.4"
   },
   "win": {
-    "icon": "assets/icons/win/icon.ico"
+    "icon": "assets/icons/win/icon.ico",
+    "target": "NSIS"
   },
   "repository": {
     "type": "git",
@@ -43,6 +47,7 @@
   },
   "devDependencies": {
     "electron": "^4.1.4",
+    "electron-builder": "^20.44.4",
     "electron-installer-windows": "^1.1.1",
     "electron-packager": "^13.1.1"
   }
