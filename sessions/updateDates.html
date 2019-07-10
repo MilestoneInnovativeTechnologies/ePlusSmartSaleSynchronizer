@@ -15,11 +15,11 @@
             startUpload();
         });
         function send(channel,args){ parentWindow.send(channel,args); }
-        function log(text,fn){ send('log',`Update Dates :: ${text}`); if(fn) window[fn].call(); }
+        function log(text,fn){ send('log',`Date Update :: ${text}`); if(fn) window[fn].call(); }
     </script>
     <script>
         function startUpload(){
-            log('Uploading');
+            log('Requesting Server');
             $.getJSON(link,dateData,function (response){
                 log('Success!!'); send('update-date-success',[response]);
             }).fail(function(xhr,statusText){
