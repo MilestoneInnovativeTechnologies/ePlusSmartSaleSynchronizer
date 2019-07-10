@@ -8,18 +8,18 @@
     <link rel="stylesheet" href="assets/css/mainWindow.css">
     <script>
         const { ipcRenderer,remote } = require('electron'), { dialog,BrowserWindow } = remote, currentWindow = remote.getCurrentWindow(),
-            $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'),
+            $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'), url = require('url'),
             maxLog = 15, continueInterval = 1500, processTableWindowConfig = { width:300, height:300, show:false },
             quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] },
             directionMap = { up:'to',down:'from',from:'down',to:'up' };
         let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
-            inWork = false, processTableWindow = null,workTimeOut = 0,interactUrl;
+            inWork = false, processTableWindow = null,workTimeOut = 0;
 
         ipcRenderer.on('log',function(event,text){ log(text); });
         ipcRenderer.on('complete-process-table',function(event,tblDetails){
             if(processTableWindow && !processTableWindow.isDestroyed()) processTableWindow.destroy();
             processTableWindow = null;
-            if(tblDetails && !_.isEmpty(tblDetails))reQueueSyncForTable(tblDetails[0],directionMap[tblDetails[1]]);
+            if(tblDetails && !_.isEmpty(tblDetails)) reQueueSyncForTable.apply(this,tblDetails);
         });
 
         $(function(){
@@ -39,7 +39,6 @@
             fs.readFile(uuidFilePath,function(error,uuid){
                 if(error) log('Error in reading uuid file!!');
                 client = uuid.toString();
-                interactUrl = path.join(ssConfig.url_interact,'sync',client);
             })
         }
         function loadTblData(callback){
@@ -66,19 +65,24 @@
         function alterContinue(){ doContinue = !doContinue; $('#alter_continue').text((doContinue?'Pause':'Continue') + ' Sync') }
         function minimizeToTray(){ send('minimize-to-tray'); }
         function updateWorking(){ clearTimeout(workTimeOut); $('.app-title').addClass('working'); workTimeOut = setTimeout(function(){ $('.app-title').removeClass('working'); },continueInterval*3); }
-        function setWorkingDisplay(text,dir){ let opDir = { up:'down',down:'up','':['up','down'] }; $('.queue-working').text(text).addClass(dir).removeClass(opDir[dir]); }
+        function setWorkingDisplay(text,type){ let opDir = { up:'down',down:'up','':'both',both:'' }; $('.queue-working').text(text).addClass(type).removeClass(opDir[type]); }
         function initTable(data){
-            const { id,table,last_updated,last_created,sync_to_ttl,sync_from_ttl } = data, timeNow = getTimeNow();
-            let source = { id, updated: last_updated, created: last_created, to:parseInt(sync_to_ttl), from:parseInt(sync_from_ttl) };
+            const { id,table,type,delay,sync,record } = data, timeNow = getTimeNow();
+            let source = { id, sync, record, type, delay:parseInt(delay) };
             //let source = { id, updated: last_updated, created: last_created, to:5, from:parseInt(sync_from_ttl) };
             if(!_.has(tblData,table)) tblData[table] = source; else _.assign(tblData[table],source);
             if(!_.has(tblData[table],'primary_key') || _.isEmpty(tblData[table].primary_key))
                 getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
             if(!_.has(tblData[table],'fields') || _.isEmpty(tblData[table].fields))
                 getTableFields(table).then(function(Obj){ _.forEach(Obj,(fields,table) => updateTblData(table,'fields',fields)) });
-            addToProcessQueue(timeNow,[table,'up']); addToProcessQueue(timeNow,[table,'down']);
+            addToProcessQueue(timeNow,[table,type,delay]);// addToProcessQueue(timeNow,[table,'down']);
         }
         function send(channel,args){ ipcRenderer.send.apply(null,[channel,args]) }
+        function getInteractUrl(tbl){
+            let { protocol,host,pathname } = url.parse(ssConfig.url_interact);
+            pathname = path.join(pathname.substr(1),'sync',client,tbl);
+            return url.format({ protocol,host,pathname }).toString();
+        }
     </script>
     <script>
         function setupMysqlConnection(){
@@ -118,15 +122,15 @@
             });
         }
         function isOneTimeTable( { fields } ){ return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) }
-        function reQueueSyncForTable(table,direction){
-            let delay = parseInt(tblData[table][direction]); if(!delay || isOneTimeTable(tblData[table])) return inWork = false;
-            if(!inQueue(table,directionMap[direction])) addToProcessQueue(delay + getTimeNow(),[table,directionMap[direction]]);
+        function reQueueSyncForTable(table,type){
+            let delay = parseInt(tblData[table].delay); if(!delay) return inWork = false;
+            if(!inQueue(table,type)) addToProcessQueue(delay + getTimeNow(),[table,type]);
             log('Table: ' + table + ', added to Queue'); return inWork = false;
         }
-        function inQueue(table,direction){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === direction)); }
+        function inQueue(table,type){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === type)); }
         function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
         function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); }
-        function getQueueItem(text,direction,id){ return $('<a>').addClass(['queue-item',direction,id]).text(text); }
+        function getQueueItem(text,type,id){ return $('<a>').addClass(['queue-item',type,id]).text(text); }
         function displayProcessQueue(){ let queueDiv = $('#queue'); $('.queue-item',queueDiv).remove(); _.forEach(processQueue,(data,id) => { queueDiv.append(getQueueItem(data[0],data[1],id)); }); }
         function haveQueueEarlierThan(num){ let first = _.head(_.keys(processQueue)); return !!(first && parseInt(first) <= parseInt(num)); }
         function pullFirstFromQueue(){ let first = _.head(_.keys(processQueue)), data = null; if(first) data = processQueue[first]; delete processQueue[first]; removeQueueDisplay(first); return data; }
@@ -138,12 +142,13 @@
             if(!doContinue || inWork || !haveQueueEarlierThan(timeNow)) return;
             let data = pullFirstFromQueue(); if(!data) return;
             inWork = true; updateWorking(); setWorkingDisplay(data[0],data[1]);
+            let iUrl = getInteractUrl(data[0]);
             processTableWindow = new BrowserWindow(processTableWindowConfig).on('closed', function(){ processTableWindow = null; inWork = false; });
             processTableWindow.loadURL(path.join(__dirname,'sessions','processTable.html'));
             processTableWindow.webContents.on('did-finish-load',function(){
                 processTableWindow.webContents.send('config',{
-                    table:data[0],direction:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
-                    mysqlParams,url:path.join(interactUrl,data[0]),id:tblData[data[0]].id
+                    table:data[0],type:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
+                    mysqlParams,url:iUrl
                 });
             });
         }
