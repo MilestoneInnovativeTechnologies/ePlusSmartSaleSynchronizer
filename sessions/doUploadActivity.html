@@ -7,7 +7,7 @@
         const { ipcRenderer,remote } = require('electron'), $ = require('jquery');
         const qty = 1000, buffer = 75, Response = [];
         let table, url, Activity, parentWindow;
-        let current = 0, done = 0, max = Math.ceil((qty/100)*(100+buffer));
+        let current = 0, done = 0, max = Math.ceil((qty/100)*(100+buffer)), retry = 0, maxRetry = 1;
         ipcRenderer.on('data',function(event,data){
             table = data.table; url = data.url; Activity = data.activity; parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
             log('Uploading!'); doUploadAfter(0);
@@ -24,18 +24,18 @@
             let remaining = Activity[current]['data'].slice(pos).length;
             if(remaining === 0) return (Activity[++current]) ? doUploadAfter(0) : send('done-upload-activity',Response);
             let upto = pos + ((remaining > max) ? qty : remaining);
-            uploadActivity([Object.assign({},Activity[current],{ data:Activity[current].data.slice(pos,upto) })],upto);
+            uploadActivity([Object.assign({},Activity[current],{ data:Activity[current].data.slice(pos,upto) })],upto,pos);
         }
-        function uploadActivity(activity,upto){
+        function uploadActivity(activity,upto,frm){
+            if(retry > 0) activity[0].mode = 'update_or_create';
             let data = getFormData(activity);
             let ajaxConfig = Object.assign({ data },getActivityUploadConfig());
             $.ajax(ajaxConfig).done(function(response){
-                log('Success '+upto+'!!');
-                Response.push(response);
-                doUploadAfter(upto);
+                log('Success '+upto+'!!'); Response.push(response); retry = 0; doUploadAfter(upto);
             }).fail(function(){
                 log('Failed '+upto+'!!');
-                //doUploadAfter(upto);
+                if(maxRetry > retry++) { log('Retrying '+retry); doUploadAfter(frm); }
+                else { log('Skipping !!'); doUploadAfter(upto); }
             })
         }
     </script>
