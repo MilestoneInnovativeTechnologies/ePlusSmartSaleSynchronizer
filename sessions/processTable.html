@@ -17,7 +17,7 @@
         let table,type,tblData,sync,record,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,
             parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,fetchNext = { update_or_create:0,create:0,update:0 },
             executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow,
-            Activity = [], latestDates = { update:null,create:null }, modeDateFieldMap = { update:'MODIFIED_DATE',create:'CREATED_DATE' };
+            Activity = [], latestDates = { sync:null,record:null }, modeDateFieldMap = { update:'MODIFIED_DATE',create:'CREATED_DATE' };
     </script>
     <script>
         ipcRenderer.on('config',function(event,dataObj){
@@ -37,6 +37,7 @@
         ipcRenderer.on('update-date-failed',function (){ log('Skipping..'); destroyWindow(updateDateWindow); repeatedProcess(); });
         ipcRenderer.on('failed-download-activity',function (){ destroyWindow(downloadActivityWindow); log('Skipping..'); completeProcessingTable(); });
         ipcRenderer.on('done-download-activity',function (event,response){ destroyWindow(downloadActivityWindow); postDownloadActivities(response); });
+        ipcRenderer.on('done-import-activity',function (event,data){ destroyWindow(importActivityWindow); postImportActivities.apply(this,data); });
 
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`${table}(${type}) :: ${text}`); if(fn) window[fn].call(); }
@@ -59,6 +60,9 @@
         function isJsonString(string){
             try{ JSON.parse(string) } catch(e) { return false; }
             return true;
+        }
+        function getJsonFromString(input) {
+            return (_.isString(input) && isJsonString(input)) ? JSON.parse(input) : ( _.isPlainObject(input) ? input : [])
         }
     </script>
     <script>
@@ -90,6 +94,9 @@
         function bothSyncInit(){
             return upSyncInit();
         }
+        function downSyncInit(){
+            loadDownloadActivityWindow();
+        }
         function handleQueryResults(result){
             for(x in result){
                 let mode = x, data = result[x];
@@ -99,8 +106,8 @@
                     fetchNext[mode] = (data.length >= limitRecords) ? (fetchNext[mode] + data.length) : 0
                     Activity.push(wrapActivity(data,mode));
                 }
-                startProcessingActivity()
             }
+            startProcessingActivity()
         }
         function startProcessingActivity(){
             if(!Activity || _.isEmpty(Activity)) return completeProcessingTable();
@@ -108,6 +115,7 @@
             uploadActivityData(Activity);
         }
         function repeatedProcess() {
+            if(type === 'down') return completeProcessingTable();
             let queries = {};
             Activity = []; log('Check for further records..');
             for(x in fetchNext){ if(fetchNext[x] !== 0) queries[x] = window[x+'_RecordQuery'].call(this,sync); }
@@ -137,7 +145,6 @@
             if(error) return log('Error while fetching data, skipping !!','startProcessingActivity')
             let result = JSON.parse(JSON.stringify(rowsPack));
             log(`${result.length} records to mode update`); if(result.length) Activity.push(wrapActivity(result,'update'));
-            // fetchNext = (result.length >= limitRecords) ? (fetchNext + result.length) : 0;
             startProcessingActivity();
         }
     </script>
@@ -168,7 +175,7 @@
             updateDateWindow.webContents.on('did-finish-load',function(){ updateDateWindow.webContents.send('data',sendData); });
         }
         function loadImportActivityWindow(activity){
-            let sendData = { parentWindowId:currentWindow.id,activity,mysqlParams };
+            let sendData = { parentWindowId:currentWindow.id,activity,mysqlParams,tblData:tblData[table] };
             importActivityWindow = new BrowserWindow(importActivityWindowConf).on('closed',() => importActivityWindow = null );
             importActivityWindow.loadURL(importActivityWindowUrl);
             importActivityWindow.webContents.on('did-finish-load',function(){ importActivityWindow.webContents.send('data',sendData); });
@@ -189,27 +196,37 @@
                 latestDates['record'] = _.max([getMaxOfDateField(activity.data,'CREATED_DATE'),latestDates['record']])
             });
         }
+        function updateSyncDates(record){
+            log('Updating times');
+            latestDates['sync'] = getDateTime();
+            if(record) latestDates['record'] = record;
+            updateTableDatesWithServer();
+        }
+        function setRecordDateAndUpdate(dateObj){
+            latestDates['record'] = dateObj[table];
+            updateTableDatesWithServer();
+        }
         function postUploadActivities(response){
             if(type === 'both' && !!response){
-                let json = (_.isString(response) && isJsonString(response)) ? JSON.parse(response) : ( _.isPlainObject(response) ? response : []);
+                let json = getJsonFromString(response);
                 if(!_.isEmpty(json)) handleUploadResponseActivity(json);
             } else {
-                keepActivityDates(); updateTableDatesWithServer();
+                keepActivityDates();
+                updateTableDatesWithServer();
             }
-            // if(!response || !response.length) return repeatedProcess();
-            // let json = (_.isString(response) && isJsonString(response)) ? JSON.parse(response) : ( _.isPlainObject(response) ? response : []);
-            // if(!_.isEmpty(json)) handleUploadResponseActivity(json);
-            // else repeatedProcess();
         }
         function postDownloadActivities(response){
-            if(!response || !response.length) return;
-            let json = (_.isString(response) && isJsonString(response)) ? JSON.parse(response) : ( _.isPlainObject(response) ? response : []);
-            if(_.isEmpty(json)) return completeProcessingTable();
-            Activity = json; keepActivityDates(); loadImportActivityWindow(Activity);
+            if(!response || !response.length) { log('No Data'); return updateSyncDates(); }
+            let activity = getJsonFromString(response);
+            if(_.isEmpty(activity)) return updateSyncDates();
+            loadImportActivityWindow(activity);
+        }
+        function postImportActivities(mDate,sqlStore,pkValues,exeStatus) {
+            // POST ACTIONS HERE
+            return updateSyncDates(mDate);
         }
         function handleUploadResponseActivity(activity){
-            // loadImportActivityWindow(activity);
-            keepActivityDates(); updateTableDatesWithServer();
+            loadImportActivityWindow(activity);
         }
     </script>
     <script>
