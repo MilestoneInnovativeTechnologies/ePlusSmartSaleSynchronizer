@@ -103,6 +103,7 @@
                 if(data === false) log(mode + ' :: Error!!')
                 else if(data.length === 0) log(mode + ' :: No data');
                 else {
+                    log(mode + ' :: Have data');
                     fetchNext[mode] = (data.length >= limitRecords) ? (fetchNext[mode] + data.length) : 0
                     Activity.push(wrapActivity(data,mode));
                 }
