@@ -6,31 +6,50 @@
     <title>Import Activity</title>
     <script>
         const { ipcRenderer,remote } = require('electron'), db = require('mysql'), _ = require('lodash');
-        let parentWindow,Activity,mysql, sqlStore = [];
+        const mDateQuery = 'SELECT MAX(CREATED_DATE) mDate FROM ??';
+        let parentWindow,Activity,tblData,pks,mysql,sqlStore = [],pkValues = [],exeStatus = {},mDate = null;
     </script>
     <script>
         ipcRenderer.on('data',function(event,data){
             parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
-            Activity = data.activity; mysql = db.createConnection(data.mysqlParams); mysql.connect();
+            mysql = db.createConnection(data.mysqlParams); mysql.connect();
+            Activity = data.activity; tblData = data.tblData; pks = tblData.primary_key;
             doStartImport();
         });
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`Import Activity :: ${text}`); if(fn) window[fn].call(); }
+        function finish(mxDate){ parentWindow.send('done-import-activity',[mxDate,sqlStore,pkValues,exeStatus]); }
     </script>
     <script>
         function doStartImport(){
-            log(`${Activity.length} records!`);
+            log(`${Activity.length} activities!`);
             _.forEach(Activity,(activity,actIdx) => {
-                let { table,mode,primary_key,data } = activity;
-                if(mode === 'update_or_create') return prepareUpdateOrCreateImportSql(table,primary_key,data,actIdx);
+                let { table,mode,data } = activity;
+                if(mode === 'update_or_create') return prepareUpdateOrCreateImportSql(table,pks,data,actIdx);
                 let template = getTemplateString(mode);
                 _.forEach(data,(record) => {
-                     let formatArray = getSqlFormatArray(table,mode,record,primary_key);
+                     let formatArray = getSqlFormatArray(table,mode,record,pks);
                      let sql = mysql.format(template,formatArray);
-                     storeSql(sql);
+                     storeSql(sql,primaryValuesKey(record,pks));
                 })
             });
-            log('sqlStoreComplete, do implement further coding..');
+            executeQuery(0)
+        }
+        function executeQuery(index) {
+            if(!sqlStore[index]) return fetchAndSendMaxDate();
+            let query = sqlStore[index];
+            mysql.query(query,function(error){
+                exeStatus['i'+index] = !error;
+                executeQuery(index+1)
+            })
+        }
+    </script>
+    <script>
+        function fetchAndSendMaxDate(){
+            mysql.query(mysql.format(mDateQuery,tblData.table),function(error,rowsPackets){
+                if(!error) mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
+                return finish(mDate);
+            })
         }
     </script>
     <script>
@@ -39,7 +58,7 @@
                 ? "INSERT INTO ?? SET ?"
                 : "UPDATE ?? SET ? WHERE ?";
         }
-        function getSqlFormatArray(mode, table, data, pk) {
+        function getSqlFormatArray(table, mode, data, pk) {
             let sets = [table,data];
             if(mode === 'update'){ sets.push(getConditionObject(data,pk)); }
             return sets;
@@ -53,6 +72,9 @@
             let template = getTemplateString('create');
             return mysql.format(template,[table,set]);
         }
+        function primaryValuesKey(record,pk){
+            return _.pick(record,pk);
+        }
     </script>
     <script>
         function prepareUpdateOrCreateImportSql(table, primary_key, data, actIdx){
@@ -60,7 +82,7 @@
                 let where = getConditionObject(record,primary_key);
                 let dataExists = await isDataExists(table,where);
                 let sql = (dataExists) ? doUpdateRecordSql(table,record,where) : doInsertRecordSql(table,record);
-                storeSql(sql);
+                storeSql(sql,primaryValuesKey(record,primary_key));
             });
         }
     </script>
@@ -73,7 +95,7 @@
                 })
             });
         }
-        function storeSql(sql) { sqlStore.push(sql); }
+        function storeSql(sql,pkValue) { sqlStore.push(sql);pkValues.push(pkValue); }
     </script>
 </head>
 <body>
