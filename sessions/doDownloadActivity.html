@@ -14,15 +14,15 @@
         function log(text,fn){ send('log',`Download :: ${text}`); if(fn) window[fn].call(); }
     </script>
     <script>
-        function getActivityDownloadConfig(){ return { url,type:'post',enctype:'multipart/form-data',processData:false,contentType:false } }
+        function getActivityDownloadConfig(){ return { url,type:'post' } }
     </script>
     <script>
         function initProcess(){
-            log('Downloading!');
+            log('Requesting...');
             let ajaxConfig = getActivityDownloadConfig();
             $.ajax(ajaxConfig).done(function(response){
                 log('Download Success!!');
-                send('done-download-activity',[response])
+                send('done-download-activity',response)
             }).fail(function(xhr,statusText){
                 log('Download Failed!! :: '+statusText);
                 send('failed-download-activity')
