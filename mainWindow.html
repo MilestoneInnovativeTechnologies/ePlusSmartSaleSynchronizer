@@ -69,7 +69,6 @@
         function initTable(data){
             const { id,table,type,delay,sync,record } = data, timeNow = getTimeNow();
             let source = { id, sync, record, type, delay:parseInt(delay) };
-            //let source = { id, updated: last_updated, created: last_created, to:5, from:parseInt(sync_from_ttl) };
             if(!_.has(tblData,table)) tblData[table] = source; else _.assign(tblData[table],source);
             if(!_.has(tblData[table],'primary_key') || _.isEmpty(tblData[table].primary_key))
                 getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
