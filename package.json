@@ -9,7 +9,10 @@
     "setup": "node setup/setup.js",
     "postinstall": "install-app-deps",
     "pack": "build --dir",
-    "dist": "build"
+    "dist": "build",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish"
   },
   "build": {
     "appId": "sssync",
@@ -32,6 +35,33 @@
     "IT",
     "Syncronizer"
   ],
+  "config": {
+    "forge": {
+      "packagerConfig": {},
+      "makers": [
+        {
+          "name": "@electron-forge/maker-squirrel",
+          "config": {
+            "name": "my_app"
+          }
+        },
+        {
+          "name": "@electron-forge/maker-zip",
+          "platforms": [
+            "darwin"
+          ]
+        },
+        {
+          "name": "@electron-forge/maker-deb",
+          "config": {}
+        },
+        {
+          "name": "@electron-forge/maker-rpm",
+          "config": {}
+        }
+      ]
+    }
+  },
   "author": "Milestone Innovative Technologies",
   "license": "ISC",
   "bugs": {
@@ -43,12 +73,18 @@
     "jquery": "^3.4.0",
     "lodash": "^4.17.11",
     "mysql": "^2.16.0",
-    "uuid": "^3.3.2"
+    "uuid": "^3.3.2",
+    "electron-squirrel-startup": "^1.0.0"
   },
   "devDependencies": {
     "electron": "^4.1.4",
     "electron-builder": "^20.44.4",
     "electron-installer-windows": "^1.1.1",
-    "electron-packager": "^13.1.1"
+    "electron-packager": "^13.1.1",
+    "@electron-forge/cli": "^6.0.0-beta.39",
+    "@electron-forge/maker-deb": "^6.0.0-beta.39",
+    "@electron-forge/maker-rpm": "^6.0.0-beta.39",
+    "@electron-forge/maker-squirrel": "^6.0.0-beta.39",
+    "@electron-forge/maker-zip": "^6.0.0-beta.39"
   }
 }
