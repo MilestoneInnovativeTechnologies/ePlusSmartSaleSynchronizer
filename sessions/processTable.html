@@ -7,14 +7,14 @@
     <script>
         const { ipcRenderer,remote } = require('electron'), { BrowserWindow, } = remote, currentWindow = remote.getCurrentWindow(),
             $ = require('jquery'), _ = require('lodash'), db = require('mysql'), path = require('path'), fs = require('fs'),
-            limitRecords = 5000,
+            limitRecords = 1750,
             executeQueryWindowConf = { width:300, height:300, show:false }, executeQueryWindowUrl = path.join(__dirname,'getQueryResult.html'),
             uploadActivityWindowConf = executeQueryWindowConf, uploadActivityWindowUrl = path.join(__dirname,'doUploadActivity.html'),
             updateDateWindowConf = executeQueryWindowConf, updateDateWindowUrl = path.join(__dirname,'updateDates.html')
             importActivityWindowConf = executeQueryWindowConf, importActivityWindowUrl = path.join(__dirname,'importActivity.html'),
             downloadActivityWindowConf = executeQueryWindowConf, downloadActivityWindowUrl = path.join(__dirname,'doDownloadActivity.html')
         ;
-        let table,type,tblData,sync,record,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,
+        let table,type,tblData,sync,record,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,queries,
             parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,fetchNext = { update_or_create:0,create:0,update:0 },
             executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow,
             Activity = [], latestDates = { sync:null,record:null }, modeDateFieldMap = { update:'MODIFIED_DATE',create:'CREATED_DATE' };
@@ -23,7 +23,7 @@
         ipcRenderer.on('config',function(event,dataObj){
             table = dataObj.table; tblData = dataObj.tblData; syncFile = dataObj.syncFile;
             parentWindow = BrowserWindow.fromId(dataObj.parentWindowId)
-            type = tblData[table].type; sync = tblData[table].sync; record = tblData[table].record; delay = tblData[table].delay; id = tblData[table].id; primary_key = tblData[table]['primary_key']; fields = tblData[table]["fields"];
+            type = tblData[table].type; sync = tblData[table].sync; record = tblData[table].record; delay = parseInt(tblData[table].delay); id = tblData[table].id; primary_key = tblData[table]['primary_key']; fields = tblData[table]["fields"];
             mysqlParams = dataObj.mysqlParams; setupMysqlConnection();
             $('title').append(table); oneTime = isOneTimeTable(); url = dataObj.url;
             initProcess()
@@ -48,6 +48,9 @@
     </script>
     <script>
         function isOneTimeTable(){ return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')); }
+        function isModOnlyTable(){ return (!_.includes(fields,'CREATED_DATE') && _.includes(fields,'MODIFIED_DATE')); }
+        function isCreateOnlyTable(){ return (_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')); }
+        function isNormalTable(){ return (_.includes(fields,'CREATED_DATE') && _.includes(fields,'MODIFIED_DATE')); }
         function getDateTime(){
             let d = new Date();
             return [[d.getFullYear(),to2(d.getMonth()+1),to2(d.getDate())].join('-'),[to2(d.getHours()),to2(d.getMinutes()),to2(d.getSeconds())].join(':')].join(' ')
@@ -72,9 +75,19 @@
         function getSyncAllQuery(limit){ return mysql.format("SELECT * FROM ?? LIMIT ?,?",[table,limit,limitRecords]); }
         function getUpSync(limit){ return mysql.format("SELECT * FROM ?? LIMIT ?,?",[table,limit,limitRecords]); }
 
-        function update_or_create_RecordQuery(){ return mysql.format("SELECT * FROM ?? LIMIT ?,?",[table,fetchNext.update_or_create,limitRecords]) }
-        function create_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC LIMIT ?,?",[table,'CREATED_DATE',datetime,'CREATED_DATE',fetchNext.create,limitRecords]) }
-        function update_RecordQuery(record,sync){ return mysql.format("SELECT * FROM ?? WHERE ?? <= ? AND ?? > ? ORDER BY ?? ASC LIMIT ?,?",[table,'CREATED_DATE',record,'MODIFIED_DATE',sync,'MODIFIED_DATE',fetchNext.update,limitRecords]) }
+        function update_or_create_RecordQuery(){ return mysql.format("SELECT * FROM ??",[table]) }
+        function create_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC",[table,'CREATED_DATE',datetime,'CREATED_DATE']) }
+        function update_RecordQuery(record,sync){ return mysql.format("SELECT * FROM ?? WHERE ?? <= ? AND ?? > ? ORDER BY ?? ASC",[table,'CREATED_DATE',record,'MODIFIED_DATE',sync,'MODIFIED_DATE']) }
+        function latest_modified_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC",[table,'MODIFIED_DATE',datetime,'MODIFIED_DATE']) }
+
+        function getLimitAppliedQueries(qryObj){
+            let modQryObj = {};
+            _.forEach(qryObj,(query,mode) => {
+                let lQry = [query,'LIMIT ?,?'].join(' ');
+                modQryObj[mode] = mysql.format(lQry,[fetchNext[mode],limitRecords])
+            })
+            return modQryObj;
+        }
     </script>
     <script>
         function initProcess(){
@@ -82,14 +95,15 @@
             window[type+'SyncInit'].call();
         }
         function upSyncInit(){
-            let queries = {};
-            if(delay === 0 && oneTime) queries['update_or_create'] = update_or_create_RecordQuery();
-            else if(!record) queries['update_or_create'] = update_or_create_RecordQuery();
-            else {
+            queries = {};
+            if(!sync && !record) queries['create'] = update_or_create_RecordQuery();
+            else if(sync && (oneTime || delay === 0 || !record)) queries['update_or_create'] = update_or_create_RecordQuery();
+            else if(sync && isModOnlyTable()) queries['update_or_create'] = latest_modified_RecordQuery(sync);
+            else if(sync && record) {
                 queries['create'] = create_RecordQuery(record);
-                if(sync) queries['update'] = update_RecordQuery(record,sync);
+                queries['update'] = update_RecordQuery(record,sync);
             }
-            loadExecuteQueryWindow(queries,'handleQueryResults');
+            initExecutingQueries(queries);
         }
         function bothSyncInit(){
             return upSyncInit();
@@ -98,9 +112,9 @@
             loadDownloadActivityWindow();
         }
         function handleQueryResults(result){
-            for(x in result){
-                let mode = x, data = result[x];
-                if(data === false) log(mode + ' :: Error!!')
+            for(mode in result){
+                let data = result[mode];
+                if(data === false) { console.log(mode,queries[mode],fetchNext); return log(mode + ' :: Error!!');  }
                 else if(data.length === 0) log(mode + ' :: No data');
                 else {
                     log(mode + ' :: Have data');
@@ -115,13 +129,18 @@
             log(`${Activity.length} activities found!!`);
             uploadActivityData(Activity);
         }
+        function initExecutingQueries(eQueries) {
+            if(Object.keys(eQueries).length > 0) return loadExecuteQueryWindow(eQueries,'handleQueryResults');
+            else return completeProcessingTable();
+        }
         function repeatedProcess() {
             if(type === 'down') return completeProcessingTable();
-            let queries = {};
             Activity = []; log('Check for further records..');
-            for(x in fetchNext){ if(fetchNext[x] !== 0) queries[x] = window[x+'_RecordQuery'].call(this,sync); }
-            if(Object.keys(queries).length > 0) return loadExecuteQueryWindow(queries,'handleQueryResults');
-            else return completeProcessingTable();
+            rQueries = {};
+            _.forEach(queries,(query,mode) => {
+                if(fetchNext[mode] !== 0) rQueries[mode] = query;
+            });
+            initExecutingQueries(rQueries);
         }
     </script>
     <script>
@@ -155,8 +174,9 @@
     </script>
     <script>
         function destroyWindow(destroyWindow) { if(destroyWindow && !destroyWindow.isDestroyed()) destroyWindow.destroy(); }
-        function loadExecuteQueryWindow(queries, success){
-            let sendData = { mysqlParams,queries,parentWindowId:currentWindow.id,success };
+        function loadExecuteQueryWindow(eQueries, success){
+            let lQueries = getLimitAppliedQueries(eQueries);
+            let sendData = { mysqlParams,queries:lQueries,parentWindowId:currentWindow.id,success };
             executeQueryWindow = new BrowserWindow(executeQueryWindowConf).on('closed',() => executeQueryWindow = null );
             if(executeQueryWindow){
                 executeQueryWindow.loadURL(executeQueryWindowUrl);
@@ -210,11 +230,10 @@
         function postUploadActivities(response){
             if(type === 'both' && !!response){
                 let json = getJsonFromString(response);
-                if(!_.isEmpty(json)) handleUploadResponseActivity(json);
-            } else {
-                keepActivityDates();
-                updateTableDatesWithServer();
+                if(!_.isEmpty(json)) return handleUploadResponseActivity(json);
             }
+            keepActivityDates();
+            updateTableDatesWithServer();
         }
         function postDownloadActivities(response){
             if(!response || !response.length) { log('No Data'); return updateSyncDates(); }
