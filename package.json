@@ -1,6 +1,6 @@
 {
   "name": "sssync",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "ePlus Smart Sale Sync - sync data to local pc to web and vice verse",
   "main": "main.js",
   "scripts": {
@@ -17,7 +17,7 @@
   "build": {
     "appId": "sssync",
     "productName": "ePlus Smart Sale Synchronizer",
-    "buildVersion": "0.1.4"
+    "buildVersion": "0.1.5"
   },
   "win": {
     "icon": "assets/icons/win/icon.ico",
