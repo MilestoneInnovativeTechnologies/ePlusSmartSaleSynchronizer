@@ -34,8 +34,8 @@
                 log('Success '+upto+'!!'); Response.push(response); retry = 0; doUploadAfter(upto);
             }).fail(function(){
                 log('Failed '+upto+'!!');
-                if(maxRetry > retry++) { log('Retrying '+retry); doUploadAfter(frm); }
-                else { log('Skipping !!'); doUploadAfter(upto); }
+                if(maxRetry > retry++) { log('Retrying ...'); doUploadAfter(frm); }
+                else { log('Skipping after '+maxRetry+' retry!!'); doUploadAfter(upto); }
             })
         }
     </script>
