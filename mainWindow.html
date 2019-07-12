@@ -65,7 +65,7 @@
         function alterContinue(){ doContinue = !doContinue; $('#alter_continue').text((doContinue?'Pause':'Continue') + ' Sync') }
         function minimizeToTray(){ send('minimize-to-tray'); }
         function updateWorking(){ clearTimeout(workTimeOut); $('.app-title').addClass('working'); workTimeOut = setTimeout(function(){ $('.app-title').removeClass('working'); },continueInterval*3); }
-        function setWorkingDisplay(text,type){ let opDir = { up:'down',down:'up','':'both',both:'' }; $('.queue-working').text(text).addClass(type).removeClass(opDir[type]); }
+        function setWorkingDisplay(text,type){ let types = ['up','down','both']; $('.queue-working').text(text).addClass(type).removeClass(_.without(types,type)); }
         function initTable(data){
             const { id,table,type,delay,sync,record } = data, timeNow = getTimeNow();
             let source = { id, sync, record, type, delay:parseInt(delay) };
@@ -145,10 +145,12 @@
             processTableWindow = new BrowserWindow(processTableWindowConfig).on('closed', function(){ processTableWindow = null; inWork = false; });
             processTableWindow.loadURL(path.join(__dirname,'sessions','processTable.html'));
             processTableWindow.webContents.on('did-finish-load',function(){
-                processTableWindow.webContents.send('config',{
-                    table:data[0],type:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
-                    mysqlParams,url:iUrl
-                });
+                loadTblData(function(){
+                    processTableWindow.webContents.send('config',{
+                        table:data[0],type:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
+                        mysqlParams,url:iUrl
+                    });
+                })
             });
         }
 
