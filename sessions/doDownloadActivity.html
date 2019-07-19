@@ -14,7 +14,7 @@
         function log(text,fn){ send('log',`Download :: ${text}`); if(fn) window[fn].call(); }
     </script>
     <script>
-        function getActivityDownloadConfig(){ return { url,type:'post' } }
+        function getActivityDownloadConfig(){ return { url,type:'post',data:{ type:'data' } } }
     </script>
     <script>
         function initProcess(){

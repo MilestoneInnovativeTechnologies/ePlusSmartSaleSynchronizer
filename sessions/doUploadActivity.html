@@ -16,7 +16,7 @@
         function log(text,fn){ send('log',`Upload :: ${text}`); if(fn) window[fn].call(); }
     </script>
     <script>
-        function getFormData(data){ let form_data = new FormData(); form_data.append('file',new Blob([JSON.stringify(data)],{ type:'application/json' }),[table,'json'].join('.')); return form_data; }
+        function getFormData(data){ let form_data = new FormData(); form_data.append('file',new Blob([JSON.stringify(data)],{ type:'application/json' }),[table,'json'].join('.')); form_data.append('type','data'); return form_data; }
         function getActivityUploadConfig(){ return { url,type:'post',enctype:'multipart/form-data',processData:false,contentType:false } }
     </script>
     <script>
