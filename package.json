@@ -16,8 +16,7 @@
   },
   "build": {
     "appId": "sssync",
-    "productName": "ePlus Smart Sale Synchronizer",
-    "buildVersion": "0.1.5"
+    "productName": "ePlus Smart Sale Synchronizer"
   },
   "win": {
     "icon": "assets/icons/win/icon.ico",
