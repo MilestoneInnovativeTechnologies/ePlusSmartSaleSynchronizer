@@ -10,10 +10,12 @@
         const { ipcRenderer,remote } = require('electron'), { dialog,BrowserWindow } = remote, currentWindow = remote.getCurrentWindow(),
             $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'), url = require('url'),
             maxLog = 15, continueInterval = 1500, processTableWindowConfig = { width:300, height:300, show:false },
-            quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] },
-            directionMap = { up:'to',down:'from',from:'down',to:'up' };
+            quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] };
+
         let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
             inWork = false, processTableWindow = null,workTimeOut = 0;
+
+        const customImports = ['importsales'];
 
         ipcRenderer.on('log',function(event,text){ log(text); });
         ipcRenderer.on('complete-process-table',function(event,tblDetails){
@@ -148,7 +150,7 @@
                 loadTblData(function(){
                     processTableWindow.webContents.send('config',{
                         table:data[0],type:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
-                        mysqlParams,url:iUrl
+                        mysqlParams,url:iUrl,custom:(customImports.indexOf(data[0]) > -1)
                     });
                 })
             });
@@ -160,7 +162,7 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col col-8"><h5 class="text-primary text-left mt-0 mb-0" id="company_name"></h5><span class="small" id="application"></span></div>
-        <div class="col-4 text-right app-title"><p class="text-primary font-weight-light">ePlus Smart Sale<br>Synchronizer</p></div>
+        <div class="col-4 text-right app-title"><p class="text-primary font-weight-light">ePlus Smart Sale<br>Synchronizer <script>document.write(require('./package').version)</script></p></div>
     </div>
     <hr class="m-0 mb-3">
     <div class="row" id="main">
