@@ -7,18 +7,18 @@
     <script>
         const { ipcRenderer,remote } = require('electron'), db = require('mysql'), _ = require('lodash');
         const mDateQuery = 'SELECT MAX(CREATED_DATE) mDate FROM ??';
-        let parentWindow,Activity,tblData,pks,mysql,sqlStore = [],pkValues = [],exeStatus = {},mDate = null;
+        let parentWindow,Activity,tblData,pks,fields,mysql,sqlStore = [],pkValues = [],exeRecords = [],exeStatus = {},mDate = null;
     </script>
     <script>
         ipcRenderer.on('data',function(event,data){
             parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
             mysql = db.createConnection(data.mysqlParams); mysql.connect();
-            Activity = data.activity; tblData = data.tblData; pks = tblData.primary_key;
+            Activity = data.activity; tblData = data.tblData; pks = tblData.primary_key; fields = tblData.fields;
             doStartImport();
         });
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`Import Activity :: ${text}`); if(fn) window[fn].call(); }
-        function finish(mxDate){ parentWindow.send('done-import-activity',[mxDate,sqlStore,pkValues,exeStatus]); }
+        function finish(mxDate){ parentWindow.send('done-import-activity',[mxDate,sqlStore,pkValues,exeStatus,exeRecords]); }
     </script>
     <script>
         function doStartImport(){
@@ -30,7 +30,7 @@
                 _.forEach(data,(record) => {
                      let formatArray = getSqlFormatArray(table,mode,record,pks);
                      let sql = mysql.format(template,formatArray);
-                     storeSql(sql,primaryValuesKey(record,pks));
+                     storeSql(sql,primaryValuesKey(record,pks),record);
                 })
             });
             executeQuery(0)
@@ -59,7 +59,7 @@
                 : "UPDATE ?? SET ? WHERE ?";
         }
         function getSqlFormatArray(table, mode, data, pk) {
-            let sets = [table,data];
+            let sets = [table,_.pick(data,fields)];
             if(mode === 'update'){ sets.push(getConditionObject(data,pk)); }
             return sets;
         }
@@ -82,7 +82,7 @@
                 let where = getConditionObject(record,primary_key);
                 let dataExists = await isDataExists(table,where);
                 let sql = (dataExists) ? doUpdateRecordSql(table,record,where) : doInsertRecordSql(table,record);
-                storeSql(sql,primaryValuesKey(record,primary_key));
+                storeSql(sql,primaryValuesKey(record,primary_key),record);
             });
         }
     </script>
@@ -95,7 +95,7 @@
                 })
             });
         }
-        function storeSql(sql,pkValue) { sqlStore.push(sql);pkValues.push(pkValue); }
+        function storeSql(sql,pkValue,record) { sqlStore.push(sql);pkValues.push(pkValue);exeRecords.push(record); }
     </script>
 </head>
 <body>
