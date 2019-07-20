@@ -12,11 +12,12 @@
             uploadActivityWindowConf = executeQueryWindowConf, uploadActivityWindowUrl = path.join(__dirname,'doUploadActivity.html'),
             updateDateWindowConf = executeQueryWindowConf, updateDateWindowUrl = path.join(__dirname,'updateDates.html')
             importActivityWindowConf = executeQueryWindowConf, importActivityWindowUrl = path.join(__dirname,'importActivity.html'),
-            downloadActivityWindowConf = executeQueryWindowConf, downloadActivityWindowUrl = path.join(__dirname,'doDownloadActivity.html')
+            downloadActivityWindowConf = executeQueryWindowConf, downloadActivityWindowUrl = path.join(__dirname,'doDownloadActivity.html'),
+            customImportWindowConf = executeQueryWindowConf, customImportWindowUrl = path.join(__dirname,'customImport.html')
         ;
         let table,type,tblData,sync,record,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,queries,
-            parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,fetchNext = { update_or_create:0,create:0,update:0 },
-            executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow,
+            parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,fetchNext = { update_or_create:0,create:0,update:0 }, custom,
+            executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow, customImportWindow,
             Activity = [], latestDates = { sync:null,record:null }, modeDateFieldMap = { update:'MODIFIED_DATE',create:'CREATED_DATE' };
     </script>
     <script>
@@ -24,7 +25,7 @@
             table = dataObj.table; tblData = dataObj.tblData; syncFile = dataObj.syncFile;
             parentWindow = BrowserWindow.fromId(dataObj.parentWindowId)
             type = tblData[table].type; sync = tblData[table].sync; record = tblData[table].record; delay = parseInt(tblData[table].delay); id = tblData[table].id; primary_key = tblData[table]['primary_key']; fields = tblData[table]["fields"];
-            mysqlParams = dataObj.mysqlParams; setupMysqlConnection();
+            mysqlParams = dataObj.mysqlParams; setupMysqlConnection(); custom = dataObj.custom;
             $('title').append(table); oneTime = isOneTimeTable(); url = dataObj.url;
             initProcess()
         });
@@ -38,6 +39,7 @@
         ipcRenderer.on('failed-download-activity',function (){ destroyWindow(downloadActivityWindow); log('Skipping..'); completeProcessingTable(); });
         ipcRenderer.on('done-download-activity',function (event,response){ destroyWindow(downloadActivityWindow); postDownloadActivities(response); });
         ipcRenderer.on('done-import-activity',function (event,data){ destroyWindow(importActivityWindow); postImportActivities.apply(this,data); });
+        ipcRenderer.on('done-custom-import',function (event,data){ destroyWindow(customImportWindow); postImportActivities.apply(this,data); });
 
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`${table}(${type}) :: ${text}`); if(fn) window[fn].call(); }
@@ -110,6 +112,8 @@
         }
         function downSyncInit(){
             loadDownloadActivityWindow();
+            // let fakeActivity = [{ table:'importsales',mode:'create',primary_key:[],data:[{"BILLNO":"HJ","DOCDATE":"2019-07-19 15:34:18","ACCCODE":"HJ","ITEMCODE":"HJ","UNITCODE":"UI","PARTCODE":"JIO","QTY":1.0000000000,"RATE":0.0000000000,"DISCOUNT":0.0000000000,"COCODE":"01","BRCODE":"HO","FYCODE":"1920"},{"BILLNO":"HJj","DOCDATE":"2019-07-19 15:34:18","ACCCODE":"HJj","ITEMCODE":"HJjj","UNITCODE":"UItt","PARTCODE":"JIOjjjj","QTY":2.0000000000,"RATE":0.0000000000,"DISCOUNT":0.0000000000,"COCODE":"01","BRCODE":"PO","FYCODE":"1920"}]}];
+            // loadCustomImportWindow(fakeActivity);
         }
         function handleQueryResults(result){
             for(mode in result){
@@ -207,6 +211,12 @@
             downloadActivityWindow.loadURL(downloadActivityWindowUrl);
             downloadActivityWindow.webContents.on('did-finish-load',function(){ downloadActivityWindow.webContents.send('data',sendData); });
         }
+        function loadCustomImportWindow(Activity){
+            let sendData = { table,mysqlParams,Activity,parentWindowId:currentWindow.id,tblData:tblData[table] };
+            customImportWindow = new BrowserWindow(customImportWindowConf).on('closed',() => customImportWindow = null );
+            customImportWindow.loadURL(customImportWindowUrl);
+            customImportWindow.webContents.on('did-finish-load',function(){ customImportWindow.webContents.send('data',sendData); });
+        }
     </script>
     <script>
         function keepActivityDates(){
@@ -236,17 +246,21 @@
             updateTableDatesWithServer();
         }
         function postDownloadActivities(response){
-            if(!response || !response.length) { log('No Data'); return updateSyncDates(); }
+            if(!response || !response.length) { log('No Data'); return repeatedProcess(); }
             let activity = getJsonFromString(response);
-            if(_.isEmpty(activity)) return updateSyncDates();
-            loadImportActivityWindow(activity);
+            if(_.isEmpty(activity)) return repeatedProcess();
+            latestDates['sync'] = activity[0].datetime;
+            proceedImportingActivity(activity)
         }
-        function postImportActivities(mDate,sqlStore,pkValues,exeStatus) {
-            // POST ACTIONS HERE
-            return updateSyncDates(mDate);
+        function proceedImportingActivity(activity){
+            if(custom) loadCustomImportWindow(activity)
+            else loadImportActivityWindow(activity);
+        }
+        function postImportActivities(mDate,sqlStore,pkValues,exeStatus,exeRecords) {
+            return mDate ? setRecordDateAndUpdate(_.fromPairs([table],[mDate])) : repeatedProcess();
         }
         function handleUploadResponseActivity(activity){
-            loadImportActivityWindow(activity);
+            proceedImportingActivity(activity);
         }
     </script>
     <script>
