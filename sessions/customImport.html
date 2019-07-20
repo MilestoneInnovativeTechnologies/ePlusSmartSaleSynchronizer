@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom Import Session</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), $ = require('jquery');
+        let table,parentWindow;
+        ipcRenderer.on('data',function(event,dataObj){
+            table = dataObj.table; parentWindow = remote.BrowserWindow.fromId(dataObj.parentWindowId);
+            let scriptFile = `../assets/import/${table}.js`;
+            $.getScript(scriptFile,function () {
+                main(dataObj.Activity,dataObj.tblData,dataObj.mysqlParams);
+            })
+        });
+        function send(channel,args){ parentWindow.send(channel,args); }
+        function log(text,fn){ send('log',`Custom Import :: ${text}`); if(fn) window[fn].call(); }
+        function end(mDate){ send('done-custom-import',[mDate]); }
+    </script>
+</head>
+<body>
+
+</body>
+</html>
