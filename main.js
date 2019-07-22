@@ -62,6 +62,10 @@ function deleteConfigurations(){
         if(!err) fs.unlink(DBFilePath,(err) => (err) ? console.log('DB Config file cannot be deleted..') : '');
         else console.log('DB Config file is not accessible..');
     });
+    fs.access(syncFilePath, fs.constants.R_OK, (err) => {
+        if(!err) fs.unlink(syncFilePath,(err) => (err) ? console.log('Sync info file cannot be deleted..') : '');
+        else console.log('Sync info file is not accessible..');
+    });
 }
 
 function minimizeToTray(){
