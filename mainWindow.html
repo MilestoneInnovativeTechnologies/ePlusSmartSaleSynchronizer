@@ -15,7 +15,7 @@
         let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
             inWork = false, processTableWindow = null,workTimeOut = 0;
 
-        const customImports = ['importsales'];
+        const customImports = ['importreceipts','idata'];
 
         ipcRenderer.on('log',function(event,text){ log(text); });
         ipcRenderer.on('complete-process-table',function(event,tblDetails){
@@ -140,7 +140,7 @@
     <script>
         function doProcessQueue(){
             let timeNow = getTimeNow(); workDependentChanges();
-            if(!doContinue || inWork || !haveQueueEarlierThan(timeNow)) return;
+            if(!doContinue || inWork || !haveQueueEarlierThan(timeNow) || processTableWindow !== null) return;
             let data = pullFirstFromQueue(); if(!data) return;
             inWork = true; updateWorking(); setWorkingDisplay(data[0],data[1]);
             let iUrl = getInteractUrl(data[0]);
