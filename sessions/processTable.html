@@ -18,6 +18,7 @@
         let table,type,tblData,sync,record,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,queries,
             parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,fetchNext = { update_or_create:0,create:0,update:0 }, custom,
             executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow, customImportWindow,
+            doneDownloadAction = false,
             Activity = [], latestDates = { sync:null,record:null }, modeDateFieldMap = { update:'MODIFIED_DATE',create:'CREATED_DATE' };
     </script>
     <script>
@@ -111,9 +112,8 @@
             return upSyncInit();
         }
         function downSyncInit(){
-            loadDownloadActivityWindow();
-            // let fakeActivity = [{ table:'importsales',mode:'create',primary_key:[],data:[{"BILLNO":"HJ","DOCDATE":"2019-07-19 15:34:18","ACCCODE":"HJ","ITEMCODE":"HJ","UNITCODE":"UI","PARTCODE":"JIO","QTY":1.0000000000,"RATE":0.0000000000,"DISCOUNT":0.0000000000,"COCODE":"01","BRCODE":"HO","FYCODE":"1920"},{"BILLNO":"HJj","DOCDATE":"2019-07-19 15:34:18","ACCCODE":"HJj","ITEMCODE":"HJjj","UNITCODE":"UItt","PARTCODE":"JIOjjjj","QTY":2.0000000000,"RATE":0.0000000000,"DISCOUNT":0.0000000000,"COCODE":"01","BRCODE":"PO","FYCODE":"1920"}]}];
-            // loadCustomImportWindow(fakeActivity);
+            if(doneDownloadAction === true) return completeProcessingTable();
+            setTimeout(loadDownloadActivityWindow,1000)
         }
         function handleQueryResults(result){
             for(mode in result){
@@ -129,13 +129,13 @@
             startProcessingActivity()
         }
         function startProcessingActivity(){
-            if(!Activity || _.isEmpty(Activity)) return completeProcessingTable();
+            if(!Activity || _.isEmpty(Activity)) return (type === 'up') ? completeProcessingTable() : downSyncInit();
             log(`${Activity.length} activities found!!`);
             uploadActivityData(Activity);
         }
         function initExecutingQueries(eQueries) {
             if(Object.keys(eQueries).length > 0) return loadExecuteQueryWindow(eQueries,'handleQueryResults');
-            else return completeProcessingTable();
+            else return (type === 'up') ? completeProcessingTable() : downSyncInit();
         }
         function repeatedProcess() {
             if(type === 'down') return completeProcessingTable();
@@ -246,6 +246,7 @@
             updateTableDatesWithServer();
         }
         function postDownloadActivities(response){
+            doneDownloadAction = true;
             if(!response || !response.length) { log('No Data'); return repeatedProcess(); }
             let activity = getJsonFromString(response);
             if(_.isEmpty(activity)) return repeatedProcess();
