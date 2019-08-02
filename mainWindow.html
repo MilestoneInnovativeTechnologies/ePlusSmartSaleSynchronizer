@@ -15,7 +15,7 @@
         let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
             inWork = false, processTableWindow = null,workTimeOut = 0;
 
-        const customImports = ['importreceipts','idata'];
+        const customImports = ['importreceipts','idata','piidata'];
 
         ipcRenderer.on('log',function(event,text){ log(text); });
         ipcRenderer.on('complete-process-table',function(event,tblDetails){
