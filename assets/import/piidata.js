@@ -1,5 +1,6 @@
 const db = require('mysql'), _ = require('lodash');
 const insFormat = 'INSERT INTO `piidata` (??) VALUES ?';
+const mDateQuery = 'SELECT MAX(CREATED_DATE) mDate FROM `piidata`';
 // const SPCallFormat = 'CALL SP_ACCOUNTPOSTING (?,?,?,?,?)';
 // const TruncateFormat = 'TRUNCATE `idata`';
 let mysql, tblData;
@@ -7,6 +8,12 @@ function main(Activity,TblData,mysqlParams){
     mysql = db.createConnection(mysqlParams); mysql.connect(); tblData = TblData;
     _.forEach(Activity,processActivity);
     // mysql.query(TruncateFormat,() => _.forEach(Activity,processActivity))
+}
+function endWithMaxDate(){
+    mysql.query(mDateQuery,function(error,rowsPackets){
+        if(!error) mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
+        return end(mDate);
+    })
 }
 
 let data;
@@ -30,7 +37,7 @@ function getGroupedRecords(records) {
 
 // noinspection DuplicatedCode
 function processCompany(cmpIdx){
-    if(!companies || !companies[cmpIdx]) return end();
+    if(!companies || !companies[cmpIdx]) return endWithMaxDate();
     branches = Object.keys(data[companies[cmpIdx]]);
     processCompanyBranch(cmpIdx,0)
 }
@@ -72,7 +79,7 @@ function processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records) {
             RunSP(cmp,brn,fyc,fnc,doc)
                 .then(() => resolve([cmp,brn,fyc,fnc,doc]))
                 .catch(() => reject([cmp,brn,fyc,fnc,doc]));
-        }).catch(() => reject(records))
+        }).catch(() => reject(cache(records)))
     })
 }
 

@@ -13,11 +13,16 @@
             quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] };
 
         let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
-            inWork = false, processTableWindow = null,workTimeOut = 0;
+            inWork = false, processTableWindow = null,workTimeOut = 0,cache = {};
 
         const customImports = ['importreceipts','idata','piidata'];
 
         ipcRenderer.on('log',function(event,text){ log(text); });
+        ipcRenderer.on('cache-record',function(event,table,record){
+            if(!_.has(cache,table)) cache[table] = [];
+            let cRecord = _.isArray(record) ? record : [record];
+            cache[table] = _.concat(cache[table],cRecord);
+        });
         ipcRenderer.on('complete-process-table',function(event,tblDetails){
             if(processTableWindow && !processTableWindow.isDestroyed()) processTableWindow.destroy();
             processTableWindow = null;
@@ -136,6 +141,7 @@
         function haveQueueEarlierThan(num){ let first = _.head(_.keys(processQueue)); return !!(first && parseInt(first) <= parseInt(num)); }
         function pullFirstFromQueue(){ let first = _.head(_.keys(processQueue)), data = null; if(first) data = processQueue[first]; delete processQueue[first]; removeQueueDisplay(first); return data; }
         function removeQueueDisplay(no){ $('.queue-item.'+no).slideUp(function(){ this.remove() }); }
+        function getCachedRecords(table) { let records = []; if(cache[table]) records = cache[table]; delete cache[table]; return records; }
     </script>
     <script>
         function doProcessQueue(){
@@ -150,7 +156,7 @@
                 loadTblData(function(){
                     processTableWindow.webContents.send('config',{
                         table:data[0],type:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
-                        mysqlParams,url:iUrl,custom:(customImports.indexOf(data[0]) > -1)
+                        mysqlParams,url:iUrl,custom:(customImports.indexOf(data[0]) > -1),cache:getCachedRecords(data[0])
                     });
                 })
             });
