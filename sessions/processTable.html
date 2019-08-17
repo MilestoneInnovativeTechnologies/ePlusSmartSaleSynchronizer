@@ -15,7 +15,7 @@
             downloadActivityWindowConf = executeQueryWindowConf, downloadActivityWindowUrl = path.join(__dirname,'doDownloadActivity.html'),
             customImportWindowConf = executeQueryWindowConf, customImportWindowUrl = path.join(__dirname,'customImport.html')
         ;
-        let table,type,tblData,sync,record,cache,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,queries,
+        let table,type,tblData,conditions,sync,record,cache,primary_key,fields,mysqlParams,mysql,oneTime,mode,url,id,queries,
             parentWindow, reCloseDelay = 2000, reCloseTimeOut = null, syncFile,fetchNext = { update_or_create:0,create:0,update:0 }, custom,
             executeQueryWindow, uploadActivityWindow, updateDateWindow, importActivityWindow, downloadActivityWindow, customImportWindow,
             doneDownloadAction = false,
@@ -24,10 +24,11 @@
     <script>
         ipcRenderer.on('config',function(event,dataObj){
             table = dataObj.table; tblData = dataObj.tblData; syncFile = dataObj.syncFile; cache = dataObj.cache;
+            mysqlParams = dataObj.mysqlParams; setupMysqlConnection(); custom = dataObj.custom;
             parentWindow = BrowserWindow.fromId(dataObj.parentWindowId)
             type = tblData[table].type; sync = tblData[table].sync; record = tblData[table].record; delay = parseInt(tblData[table].delay); id = tblData[table].id; primary_key = tblData[table]['primary_key']; fields = tblData[table]["fields"];
-            mysqlParams = dataObj.mysqlParams; setupMysqlConnection(); custom = dataObj.custom;
             $('title').append(table); oneTime = isOneTimeTable(); url = dataObj.url;
+            conditions = getConditionData(tblData[table]["condition"]);
             initProcess()
         });
 
@@ -75,15 +76,10 @@
     </script>
     <script>
         function setupMysqlConnection(){ mysql = db.createConnection(mysqlParams); }
-        function getSyncCreatedQuery(limit){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC LIMIT ?,?",[table,'CREATED_DATE',created,'CREATED_DATE',limit,limitRecords]); }
-        function getSyncUpdatedQuery(limit){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? AND ?? <= ? ORDER BY ?? ASC LIMIT ?,?",[table,'MODIFIED_DATE',updated,'CREATED_DATE',created,'MODIFIED_DATE',limit,limitRecords]); }
-        function getSyncAllQuery(limit){ return mysql.format("SELECT * FROM ?? LIMIT ?,?",[table,limit,limitRecords]); }
-        function getUpSync(limit){ return mysql.format("SELECT * FROM ?? LIMIT ?,?",[table,limit,limitRecords]); }
-
-        function update_or_create_RecordQuery(){ return mysql.format("SELECT * FROM ??",[table]) }
-        function create_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC",[table,'CREATED_DATE',datetime,'CREATED_DATE']) }
-        function update_RecordQuery(record,sync){ return mysql.format("SELECT * FROM ?? WHERE ?? <= ? AND ?? > ? ORDER BY ?? ASC",[table,'CREATED_DATE',record,'MODIFIED_DATE',sync,'MODIFIED_DATE']) }
-        function latest_modified_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE ?? > ? ORDER BY ?? ASC",[table,'MODIFIED_DATE',datetime,'MODIFIED_DATE']) }
+        function update_or_create_RecordQuery(){ let Query = mysql.format("SELECT * FROM ??",[table]); return (conditions) ? (Query + ' WHERE ' + conditions) : Query; }
+        function create_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE (?? > ?) "+ (conditions ? (' AND '+conditions) : '') +" ORDER BY ?? ASC",[table,'CREATED_DATE',datetime,'CREATED_DATE']) }
+        function update_RecordQuery(record,sync){ return mysql.format("SELECT * FROM ?? WHERE (?? <= ? AND ?? > ?) "+ (conditions ? (' AND '+conditions) : '') +" ORDER BY ?? ASC",[table,'CREATED_DATE',record,'MODIFIED_DATE',sync,'MODIFIED_DATE']) }
+        function latest_modified_RecordQuery(datetime){ return mysql.format("SELECT * FROM ?? WHERE (?? > ?) "+ (conditions ? (' AND '+conditions) : '') +" ORDER BY ?? ASC",[table,'MODIFIED_DATE',datetime,'MODIFIED_DATE']) }
 
         function getLimitAppliedQueries(qryObj){
             let modQryObj = {};
@@ -93,6 +89,47 @@
             })
             return modQryObj;
         }
+
+        function getConditionData(data) {
+            if (_.isArray(data)) return conditionStringFromArray(data);
+            if (_.isObject(data)) return conditionStringFromObject(data);
+            if (_.trim(data) === '') return null; data = _.trim(data);
+            if (_.includes(['{', '['], data.substr(0, 1))) return getConditionData(JSON.parse(data));
+            return conditionStringFromText(data);
+        }
+        function conditionStringFromText(text, precedent = null) {
+            if (_.isString(primary_key)) return getConditionString(primary_key, text, '=', precedent);
+            if (Array.isArray(primary_key) && primary_key.length === 1) return getConditionString(primary_key[0], text, '=', precedent);
+            return null;
+        }
+        function conditionStringFromObject(Obj) {
+            let precedent = Obj.precedent || 'AND', operand = Obj.operand || '=', conditions = [], i = 0;
+            _.forEach(Obj, function (value, name) {
+                if(!_.includes(['precedent','operand'],name)){
+                    conditions.push(getConditionString(name, value, operand, (i++) ? precedent : null))
+                }
+            });
+            return conditions.join(' ');
+        }
+        function conditionStringFromArray(ary) {
+            if (!_.some(ary, _.isObject)) return conditionStringFromText(ary);
+            return '(' + arrayToConditionsArray(ary).join(') AND (') + ')';
+        }
+        function arrayToConditionsArray(ary) {
+            return _.map(ary, function (item, i) {
+                if (_.isString(item) || _.isNumber(item) || _.isArray(item)) return conditionStringFromText(item, (i ? 'AND' : null));
+                if (i && _.isObject(item) && !_.has(item, 'precedent')) item.precedent = 'AND';
+                return conditionStringFromObject(item);
+            })
+        }
+        function getConditionString(field, value, operand = '=', precedent = null) {
+            precedent = precedent || '';
+            let conditionString = Array.isArray(value)
+                ? mysql.format(`${precedent} ?? IN (?)`, [field, value])
+                : mysql.format(`${precedent} ?? ${operand} ?`, [field, value]);
+            return _.trim(conditionString);
+        }
+
     </script>
     <script>
         function initProcess(){
