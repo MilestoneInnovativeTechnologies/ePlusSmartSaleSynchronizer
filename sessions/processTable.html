@@ -157,7 +157,7 @@
         function handleQueryResults(result){
             for(mode in result){
                 let data = result[mode];
-                if(data === false) { console.log(mode,queries[mode],fetchNext); return log(mode + ' :: Error!!');  }
+                if(data === false) return log(mode + ' :: Error!!');
                 else if(data.length === 0) log(mode + ' :: No data');
                 else {
                     log(mode + ' :: Have data');
