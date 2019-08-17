@@ -97,10 +97,10 @@
         }
         function getTablePrimaryFields(table){
             return new Promise(function(resolve,reject){
-                mysql.query('SHOW CREATE TABLE ??',table,function(error,result){
-                    let CreateTable = _.get(_.head(result),'Create Table'), pattern = new RegExp(/PRIMARY KEY \(`(.*)`\)/), split = '`,`';
+                mysql.query('SHOW CREATE TABLE ??',table,function(error,result,fieldPackets){
                     if(error) return reject(`Error while trying to get primary fields from table: ${table}`);
-                    return resolve(_.zipObject([table],[pattern.exec(CreateTable)[1].split(split)]));
+                    let tType = getTableTypeFromResultFieldPackets(fieldPackets);
+                    resolve(window["getPrimaryFieldsOf"+tType](table,result,fieldPackets));
                 });
             })
         }
@@ -113,6 +113,15 @@
             })
         }
         function getFieldArrayFromFieldPackets(fieldPackets){ return _.map(fieldPackets,'name'); }
+        function getTableTypeFromResultFieldPackets(fieldPackets){ return _.head(fieldPackets).name; }
+        function getPrimaryFieldsOfTable(table,result){
+            let CreateTable = _.get(_.head(result),'Create Table'), pattern = new RegExp(/PRIMARY KEY \(`(.*)`\)/), split = '`,`';
+            return _.zipObject([table],[pattern.exec(CreateTable)[1].split(split)]);
+        }
+        function getPrimaryFieldsOfView(table,result){
+            let CreateView = _.get(_.head(result),'Create View'), pattern = new RegExp(/AS \`(\w*)\`/);
+            return _.zipObject([table],[[pattern.exec(CreateView)[1]]]);
+        }
     </script>
     <script>
         function getTimeNow(){ return parseInt((new Date().getTime()/1000).toString().substr(4)); }
