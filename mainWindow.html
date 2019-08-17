@@ -74,8 +74,8 @@
         function updateWorking(){ clearTimeout(workTimeOut); $('.app-title').addClass('working'); workTimeOut = setTimeout(function(){ $('.app-title').removeClass('working'); },continueInterval*3); }
         function setWorkingDisplay(text,type){ let types = ['up','down','both']; $('.queue-working').text(text).addClass(type).removeClass(_.without(types,type)); }
         function initTable(data){
-            const { id,table,type,delay,sync,record } = data, timeNow = getTimeNow();
-            let source = { id, sync, record, type, delay:parseInt(delay) };
+            const { id,table,type,delay,sync,record,condition } = data, timeNow = getTimeNow();
+            let source = { id, sync, record, type, condition, delay:parseInt(delay) };
             if(!_.has(tblData,table)) tblData[table] = source; else _.assign(tblData[table],source);
             if(!_.has(tblData[table],'primary_key') || _.isEmpty(tblData[table].primary_key))
                 getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
