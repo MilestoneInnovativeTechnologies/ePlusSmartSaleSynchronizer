@@ -71,7 +71,7 @@
             return true;
         }
         function getJsonFromString(input) {
-            return (_.isString(input) && isJsonString(input)) ? JSON.parse(input) : ( _.isPlainObject(input) ? input : [])
+            return (_.isString(input) && isJsonString(input)) ? JSON.parse(input) : ((_.isPlainObject(input) || _.isArray(input)) ? input : [])
         }
     </script>
     <script>
