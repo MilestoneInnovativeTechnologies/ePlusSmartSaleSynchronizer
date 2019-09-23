@@ -22,7 +22,7 @@
     <script>
         function doUploadAfter(pos){
             let remaining = Activity[current]['data'].slice(pos).length;
-            if(remaining === 0) return (Activity[++current]) ? doUploadAfter(0) : send('done-upload-activity',Response);
+            if(remaining === 0) return (Activity[++current]) ? doUploadAfter(0) : send('done-upload-activity',Response.filter(response => response));
             let upto = pos + ((remaining > max) ? qty : remaining);
             uploadActivity([Object.assign({},Activity[current],{ data:Activity[current].data.slice(pos,upto) })],upto,pos);
         }
