@@ -67,8 +67,7 @@ function processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx) {
     if(!data[cmp][brn][fyc][fnc] || !data[cmp][brn][fyc][fnc][docnos[docIdx]]) return processCompanyBranchYearFn(cmpIdx,brnIdx,fynIdx,fncIdx+1);
     let records = data[cmp][brn][fyc][fnc][docnos[docIdx]], nyDocIdx = docIdx+1;
     processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records)
-        .then(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx))
-        .catch(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx));
+        .finally(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx));
 }
 
 function processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records) {
