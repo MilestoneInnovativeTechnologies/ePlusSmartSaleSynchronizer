@@ -7,6 +7,7 @@ const multiBranchArgument = "SELECT BRCODE,ARGUMENTS FROM BRANCHFUNCTION WHERE F
 const nextAccountCode = "SELECT NEXTACCOUNTCODE(?,?) NEXTACCCODE";
 const insFormat1 = "INSERT INTO `accountmaster` (??) VALUES (?)";
 const insFormat2 = 'INSERT INTO `accountdetails` (??) VALUES ?';
+const insFormat3 = "INSERT INTO `areaaccount` (??) VALUES (?)";
 let mysql, tblData, mainActivity, pCode, processingRecords, CURRENCY, COUNTRY;
 
 function main(Activity,TblData,mysqlParams){
@@ -20,7 +21,6 @@ function main(Activity,TblData,mysqlParams){
 }
 
 function endWithMaxDate(){
-    return;
     return end(mainActivity.datetime);
 }
 
@@ -61,13 +61,13 @@ function doProcessActivity(idx){
 }
 
 function doProcessRecord(mActIdx,rIdx){
-    let record = processingRecords[rIdx]; if(!record) return doProcessActivity(mActIdx);
-    let NAME = record.DISPLAYNAME, nRIdx = rIdx+1;
-    let insData = _.pick(record,tblData.fields);
+    let record = processingRecords[rIdx]; if(!record || !record.AREACODE) return doProcessActivity(mActIdx);
+    let NAME = record.DISPLAYNAME, nRIdx = rIdx+1, AREACODE = record.AREACODE;
+    let insData = _.pick(record,['DISPLAYNAME','ADDRESS','PHONE','EMAIL']);
     let PCODE = _.get(pCode,record.BRCODE,_.get(pCode,'_'));
     mysql.query(nextAccountCode,[PCODE,NAME],(error,rowPackets) => {
         let CODE = rowPackets[0].NEXTACCCODE;
-        insData = _.assign(insData,{ CODE,CURRENCY,COUNTRY });
+        insData = _.assign({},insData,{ CODE,CURRENCY,COUNTRY });
         let { names,values } = getFormattedVariables([insData]);
         mysql.query(insFormat1,[['CODE','NAME','PCODE'],[CODE,NAME,PCODE]],function (error) {
             if(error) {
@@ -75,7 +75,10 @@ function doProcessRecord(mActIdx,rIdx){
                 doProcessRecord(mActIdx,nRIdx);
             } else {
                 mysql.query(insFormat2,[names,values],function (error) {
-                    if(!error) log('Inserted 1');
+                    if(!error) {
+                        log('Inserted Account');
+                        mysql.query(insFormat3,[['AREACODE','ACCCODE'],[AREACODE,CODE]],function (error) { if(!error) { log('Inserted Area'); } })
+                    } else
                     doProcessRecord(mActIdx,nRIdx);
                 })
             }
