@@ -83,14 +83,6 @@ function doProcessRecord(mActIdx,rIdx){
     })
 }
 
-function masterEntry(query){
-    return new Promise(resolve => {
-        mysql.query(query,function(error,rowPackets){
-            resolve(true);
-        })
-    })
-}
-
 function getFormattedVariables(records) {
     let names = Object.keys(_.head(records));
     let values = _.map(records,record => Object.values(record));
