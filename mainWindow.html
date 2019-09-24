@@ -98,7 +98,7 @@
         function getTablePrimaryFields(table){
             return new Promise(function(resolve,reject){
                 mysql.query('SHOW CREATE TABLE ??',table,function(error,result,fieldPackets){
-                    if(error) return reject(`Error while trying to get primary fields from table: ${table}`);
+                    if(error) return resolve(_.zipObject([table],[['id']]));
                     let tType = getTableTypeFromResultFieldPackets(fieldPackets);
                     resolve(window["getPrimaryFieldsOf"+tType](table,result,fieldPackets));
                 });
@@ -107,7 +107,7 @@
         function getTableFields(table){
             return new Promise(function(resolve,reject){
                 mysql.query('SELECT * FROM ?? LIMIT 1',table,function(error, result, fieldPackets){
-                    if(error) return reject(`Error while trying to get field from table: ${table}`);
+                    if(error) return resolve(_.zipObject([table],[['id']]));
                     return resolve(_.zipObject([table],[getFieldArrayFromFieldPackets(fieldPackets)]))
                 })
             })
