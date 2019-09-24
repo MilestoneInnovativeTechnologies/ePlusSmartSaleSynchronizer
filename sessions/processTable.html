@@ -277,9 +277,11 @@
             updateTableDatesWithServer();
         }
         function postUploadActivities(response){
-            if(type === 'both' && !!response){
+            if(type === 'both' && response.length > 0){
                 let json = getJsonFromString(response);
                 if(!_.isEmpty(json)) return handleUploadResponseActivity(json);
+            } else if(type === 'both' && cache && !_.isEmpty(cache)){
+                return proceedImportingActivity([wrapActivity(cache,'create')]);
             }
             keepActivityDates();
             updateTableDatesWithServer();
