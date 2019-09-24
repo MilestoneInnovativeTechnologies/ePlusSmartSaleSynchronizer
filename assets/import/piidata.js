@@ -7,7 +7,6 @@ let mysql, tblData;
 function main(Activity,TblData,mysqlParams){
     mysql = db.createConnection(mysqlParams); mysql.connect(); tblData = TblData;
     _.forEach(Activity,processActivity);
-    // mysql.query(TruncateFormat,() => _.forEach(Activity,processActivity))
 }
 function endWithMaxDate(){
     mysql.query(mDateQuery,function(error,rowsPackets){
