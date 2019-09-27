@@ -26,6 +26,7 @@ function insertData(records) {
     let { names,values } = getFormattedVariables(insRecords);
     return new Promise(((resolve, reject) => {
         mysql.query(insFormat,[names,values],function (error) {
+            if(error) logDBError(error);
             log(error ? 'Failed Insert' : 'Inserted '+values.length);
             return error ? reject(error) : resolve(true)
         })
@@ -35,6 +36,7 @@ function insertData(records) {
 function RunSP() {
     return new Promise((resolve, reject) => {
         mysql.query(SPCallFormat,function(error){
+            if(error) logDBError(error);
             log(error ? 'Failed Calling SP' : 'SP Executed');
             return error ? reject(error) : resolve(true)
         })

@@ -3,14 +3,15 @@ const insFormat = 'INSERT INTO `piidata` (??) VALUES ?';
 const mDateQuery = 'SELECT MAX(CREATED_DATE) mDate FROM `piidata`';
 // const SPCallFormat = 'CALL SP_ACCOUNTPOSTING (?,?,?,?,?)';
 // const TruncateFormat = 'TRUNCATE `idata`';
-let mysql, tblData;
+let mysql, tblData, mainActivity;
 function main(Activity,TblData,mysqlParams){
-    mysql = db.createConnection(mysqlParams); mysql.connect(); tblData = TblData;
-    _.forEach(Activity,processActivity);
+    mysql = db.createConnection(mysqlParams); mysql.connect(); tblData = TblData; mainActivity = Activity;
+    _.forEach(mainActivity,processActivity);
 }
 function endWithMaxDate(){
     mysql.query(mDateQuery,function(error,rowsPackets){
-        if(!error) mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
+        if(error) logDBError(error);
+        else mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
         return end(mDate);
     })
 }
@@ -87,6 +88,7 @@ function insertData(records) {
     let { names,values } = getFormattedVariables(insRecords);
     return new Promise(((resolve, reject) => {
         mysql.query(insFormat,[names,values],function (error) {
+            if(error) logDBError(error);
             log(error ? 'Failed Insert' : 'Inserted '+values.length);
             return error ? reject(error) : resolve(true)
         })

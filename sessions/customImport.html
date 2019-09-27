@@ -15,6 +15,7 @@
         });
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`Custom Import :: ${text}`); if(fn) window[fn].call(); }
+        function logDBError(Obj){ send('error',`${Obj.sql}\n${Obj.sqlMessage}`); }
         function end(mDate){ send('done-custom-import',[mDate]); }
         function cache(records) { send('cache',records); }
     </script>

@@ -34,6 +34,7 @@
 
         ipcRenderer.on('log',function (event,text){ log(text) });
         ipcRenderer.on('cache',function (event,record){ cacheRecord(record) });
+        ipcRenderer.on('error',function (event,text){ send('error',text) });
         ipcRenderer.on('query-result',function (event,fn,args){ destroyWindow(executeQueryWindow); window[fn].apply(window[fn],args); });
         ipcRenderer.on('failed-upload-activity',function (){ destroyWindow(uploadActivityWindow); log('Skipping..'); repeatedProcess(); });
         ipcRenderer.on('done-upload-activity',function (event,response){ destroyWindow(uploadActivityWindow); postUploadActivities(response); });

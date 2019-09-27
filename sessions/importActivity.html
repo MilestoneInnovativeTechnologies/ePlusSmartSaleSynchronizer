@@ -18,6 +18,7 @@
         });
         function send(channel,args){ parentWindow.send(channel,args); }
         function log(text,fn){ send('log',`Import Activity :: ${text}`); if(fn) window[fn].call(); }
+        function logDBError(Obj){ send('error',`${Obj.sql}\n${Obj.sqlMessage}`); }
         function finish(mxDate){ parentWindow.send('done-import-activity',[mxDate,sqlStore,pkValues,exeStatus,exeRecords]); }
     </script>
     <script>
@@ -39,6 +40,7 @@
             if(!sqlStore[index]) return fetchAndSendMaxDate();
             let query = sqlStore[index];
             mysql.query(query,function(error){
+                if(error) logDBError(error);
                 exeStatus['i'+index] = !error;
                 executeQuery(index+1)
             })
@@ -47,7 +49,8 @@
     <script>
         function fetchAndSendMaxDate(){
             mysql.query(mysql.format(mDateQuery,tblData.table),function(error,rowsPackets){
-                if(!error) mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
+                if(error) logDBError(error);
+                else mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
                 return finish(mDate);
             })
         }
@@ -90,7 +93,8 @@
         async function isDataExists(table,pkValues){
             return await new Promise(function(resolve){
                 mysql.query(mysql.format("SELECT * FROM ?? WHERE ?",[table,pkValues]),function(error,rows){
-                    if(error || rows.length === 0) return resolve(false);
+                    if(error) logDBError(error);
+                    if(rows.length === 0) return resolve(false);
                     return resolve(true);
                 })
             });

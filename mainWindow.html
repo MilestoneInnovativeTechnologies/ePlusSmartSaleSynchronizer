@@ -12,12 +12,13 @@
             maxLog = 15, continueInterval = 1500, processTableWindowConfig = { width:300, height:300, show:false },
             quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] };
 
-        let syncInfo,syncFile,userPath,uuidFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
+        let syncInfo,syncFile,userPath,uuidFilePath,errorLogFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
             inWork = false, processTableWindow = null,workTimeOut = 0,cache = {};
 
         const customImports = ['importtransactions','idata','piidata','sscustomers'];
 
         ipcRenderer.on('log',function(event,text){ log(text); });
+        ipcRenderer.on('error',function(event,text){ logDBError(text); });
         ipcRenderer.on('cache-record',function(event,table,record){
             if(!_.has(cache,table)) cache[table] = [];
             let cRecord = _.isArray(record) ? record : [record];
@@ -35,7 +36,7 @@
         });
         function initApp(configs){
             log('Initializing sync..');
-            syncInfo = configs.syncInfo; syncFile = configs.syncFilePath; userPath = configs.userPath; uuidFilePath = configs.uuidFilePath;
+            syncInfo = configs.syncInfo; syncFile = configs.syncFilePath; userPath = configs.userPath; uuidFilePath = configs.uuidFilePath; errorLogFilePath = configs.errorLogFilePath;
             mysqlParams = _.assign({ dateStrings:true },configs.mysqlParams);
             setupApp(configs.ssConfig); setupMysqlConnection();
             loadTblData(function(){ _.forEach(syncInfo,initTable); });// addToProcessQueue(getTimeNow(),['setup','up']);
@@ -55,6 +56,13 @@
                     if(!error) tblData = JSON.parse(data.toString());
                     callback.call(callback);
                 })
+            });
+        }
+        function logDBError(text){
+            let errorText = "\n=================\n[" + new Date().getTime() + "]\n----------\n"+text+"\n=================\n";
+            fs.access(errorLogFilePath,function(error){
+                if(error) return fs.writeFile(errorLogFilePath,errorText,() => log('Error Written'));
+                fs.appendFile(errorLogFilePath,errorText,() => log('Error Written'));
             });
         }
     </script>

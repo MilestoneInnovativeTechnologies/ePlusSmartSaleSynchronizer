@@ -27,14 +27,17 @@ function endWithMaxDate(){
 function getParentCode() {
     return new Promise(function(resolve){
         mysql.query(multiBranch,[COCODE],(error,rowPackets) => {
+            if(error) logDBError(error);
             let mBranch = rowPackets[0].MULTIBRANCH, pCode = {};
             if(mBranch === 'Yes'){
                 mysql.query(multiBranchArgument,[FNCODE,COCODE],(error,rowPackets) => {
+                    if(error) logDBError(error);
                     _.forEach(rowPackets,(row) => pCode[row.BRCODE] = row.ARGUMENTS.split('|')[0]);
                     resolve(pCode);
                 })
             } else {
                 mysql.query(singleBranchArgument,[FNCODE],(error,rowPackets) => {
+                    if(error) logDBError(error);
                     pCode['_'] = rowPackets[0].ARGUMENTS.split('|')[0];
                     resolve(pCode);
                 })
@@ -45,6 +48,7 @@ function getParentCode() {
 function setCurrencyAndCountry(){
     return new Promise(function(resolve){
         mysql.query(currencyCountry,function(error,rowPackets){
+            if(error) logDBError(error);
             CURRENCY = rowPackets[0].CURRENCY || 'INR';
             COUNTRY = rowPackets[0].COUNTRY || 'IN';
             resolve(true);
@@ -66,11 +70,13 @@ function doProcessRecord(mActIdx,rIdx){
     let insData = _.pick(record,['DISPLAYNAME','ADDRESS','PHONE','EMAIL']);
     let PCODE = _.get(pCode,record.BRCODE,_.get(pCode,'_'));
     mysql.query(nextAccountCode,[PCODE,NAME],(error,rowPackets) => {
+        if(error) logDBError(error);
         let CODE = rowPackets[0].NEXTACCCODE;
         insData = _.assign({},insData,{ CODE,CURRENCY,COUNTRY });
         let { names,values } = getFormattedVariables([insData]);
         mysql.query(insFormat1,[['CODE','NAME','PCODE'],[CODE,NAME,PCODE]],function (error) {
             if(error) {
+                logDBError(error);
                 log('Failed Insert 1'); cache([record]);
                 doProcessRecord(mActIdx,nRIdx);
             } else {
@@ -78,7 +84,7 @@ function doProcessRecord(mActIdx,rIdx){
                     if(!error) {
                         log('Inserted Account');
                         mysql.query(insFormat3,[['AREACODE','ACCCODE'],[AREACODE,CODE]],function (error) { if(!error) { log('Inserted Area'); } })
-                    } else
+                    } else logDBError(error);
                     doProcessRecord(mActIdx,nRIdx);
                 })
             }
