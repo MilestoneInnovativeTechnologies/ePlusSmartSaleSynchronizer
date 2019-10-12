@@ -15,7 +15,7 @@ function doProcessActivity(idx){
     let nIdx = idx+1, records = mainActivity[idx].data;
     if(!records.length) return doProcessActivity(nIdx);
     insertData(records).then(() => {
-        RunSP().then(() => doProcessActivity(nIdx))
+        RunSP().finally(() => doProcessActivity(nIdx))
     }).catch(() => {
         cache(records); doProcessActivity(nIdx);
     })
