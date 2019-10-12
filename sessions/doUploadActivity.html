@@ -35,7 +35,7 @@
             }).fail(function(){
                 log('Failed '+upto+'!!');
                 if(maxRetry > retry++) { log('Retrying ...'); doUploadAfter(frm); }
-                else { log('Skipping after '+maxRetry+' retry!!'); doUploadAfter(upto); }
+                else { log('Skipping after '+maxRetry+' retry!!'); send('failed-upload-activity'); }
             })
         }
     </script>
