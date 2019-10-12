@@ -17,7 +17,7 @@
         function executeQuery(index){
             let query = queries[queue[index]];
             mysql.query(query,function(error,rowsPackets) {
-                if(error) results[queue[index]] = false;
+                if(error) { results[queue[index]] = false; parentWindow.send('error',`${error.sql}\n${error.sqlMessage}`); }
                 else  results[queue[index]] = JSON.parse(JSON.stringify(rowsPackets));
                 if(queue[index+1]) return executeQuery(index+1);
                 else return parentWindow.send('query-result', onSuccess, [results]);
