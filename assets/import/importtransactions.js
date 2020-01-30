@@ -1,6 +1,8 @@
 const db = require('mysql'), _ = require('lodash');
 const insFormat = 'INSERT INTO `importtransactions` (??) VALUES ?';
 const SPCallFormat = 'CALL SP_IMPORTTRANSACTIONS()';
+const ShiftSPCall = 'CALL SP_UPDATESHIFTINFO(?,?,?,?,?,?,?,?,?,?)';
+const ShiftSPCallKeys = ['COCODE','BRCODE','FYCODE','FNCODE','DOCNO','COCODE','BRCODE','FYCODE','SHF','SHFDOCNO'];
 let mysql, tblData, mainActivity;
 function main(Activity,TblData,mysqlParams){
     mysql = db.createConnection(mysqlParams); mysql.connect(); tblData = TblData;
@@ -15,7 +17,14 @@ function doProcessActivity(idx){
     let nIdx = idx+1, records = mainActivity[idx].data;
     if(!records.length) return doProcessActivity(nIdx);
     insertData(records).then(() => {
-        RunSP().finally(() => doProcessActivity(nIdx))
+        mysql.query(SPCallFormat,function(error){
+            if(error) { logDBError(error); log('Failed Calling SP'); return doProcessActivity(nIdx); }
+            Promise.all(_.map(records,record => {
+                if(!record.SHFDOCNO) return Promise.resolve(true);
+                mysql.query(ShiftSPCall,getShiftSPArgs(record));
+                return Promise.resolve(true);
+            })).finally(() => { doProcessActivity(nIdx); log('SP Executed'); });
+        });
     }).catch(() => {
         cache(records); doProcessActivity(nIdx);
     })
@@ -51,4 +60,8 @@ function getFormattedVariables(records) {
     let names = Object.keys(_.head(records));
     let values = _.map(records,record => Object.values(record));
     return { names,values }
+}
+
+function getShiftSPArgs(record) {
+    return _.map(ShiftSPCallKeys,key => _.get(record,key,key));
 }

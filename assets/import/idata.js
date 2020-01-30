@@ -1,8 +1,8 @@
 const db = require('mysql'), _ = require('lodash');
 const insFormat = 'INSERT INTO `idata` (??) VALUES ?';
 const SPCallFormat = 'CALL SP_ACCOUNTPOSTING (?,?,?,?,?)';
+const ShiftSPCall = 'CALL SP_UPDATESHIFTINFO(?,?,?,?,?,?,?,?,?,?)';
 const mDateQuery = 'SELECT MAX(CREATED_DATE) mDate FROM `idata`';
-// const TruncateFormat = 'TRUNCATE `idata`';
 let mysql, tblData;
 function main(Activity,TblData,mysqlParams){
     mysql = db.createConnection(mysqlParams); mysql.connect(); tblData = TblData;
@@ -12,7 +12,7 @@ function endWithMaxDate(){
     mysql.query(mDateQuery,function(error,rowsPackets){
         if(error) logDBError(error);
         else mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
-        return end(mDate);
+        return end(mDate || null);
     })
 }
 
@@ -20,8 +20,8 @@ let data;
 let companies, branches, fycodes, fncodes, docnos;
 
 function processActivity(activity){
-    let records = activity.data; if(!records.length) return;
-    data = getGroupedRecords(records);
+    if(!activity || !activity.data || !activity.data.length) return endWithMaxDate();
+    data = getGroupedRecords(activity.data);
     companies = Object.keys(data);
     processCompany(0)
 }
@@ -75,7 +75,7 @@ function processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records) {
     let cmp = companies[cmpIdx], brn = branches[brnIdx], fyc = fycodes[fynIdx], fnc = fncodes[fncIdx], doc = docnos[docIdx];
     return new Promise((resolve, reject) => {
         insertData(records).then(() => {
-            RunSP(cmp,brn,fyc,fnc,doc)
+            RunSP(cmp,brn,fyc,fnc,doc,records[0].SHFDOCNO)
                 .then(() => resolve([cmp,brn,fyc,fnc,doc]))
                 .catch(() => reject([cmp,brn,fyc,fnc,doc]));
         }).catch(() => reject(cache(records)))
@@ -94,12 +94,11 @@ function insertData(records) {
     }))
 }
 
-function RunSP(...SPArgs) {
+function RunSP(cmp,brn,fyc,fnc,doc,sdoc) {
     return new Promise((resolve, reject) => {
-        mysql.query(SPCallFormat,SPArgs,function(error){
-            if(error) logDBError(error);
-            log(error ? 'Failed Calling SP' : 'SP Executed');
-            return error ? reject(error) : resolve(true)
+        mysql.query(SPCallFormat,[cmp,brn,fyc,fnc,doc],function(error){
+            if(error) { logDBError(error); log('Failed Calling SP'); return reject(error); }
+            if(sdoc) mysql.query(ShiftSPCall,getShiftSPArgs(cmp,brn,fyc,fnc,doc,sdoc),function(){ log('SP Executed'); resolve(true); });
         })
     })
 }
@@ -112,4 +111,8 @@ function getFormattedVariables(records) {
     let names = Object.keys(_.head(records));
     let values = _.map(records,record => Object.values(record));
     return { names,values }
+}
+
+function getShiftSPArgs(cmp,brn,fyc,fnc,doc,sdoc) {
+    return [cmp,brn,fyc,fnc,doc,cmp,brn,fyc,'SHF',sdoc];
 }
