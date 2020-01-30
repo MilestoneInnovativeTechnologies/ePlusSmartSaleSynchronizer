@@ -15,7 +15,7 @@
         let syncInfo,syncFile,userPath,uuidFilePath,errorLogFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
             inWork = false, processTableWindow = null,workTimeOut = 0,cache = {};
 
-        const customImports = ['importtransactions','idata','piidata','sscustomers'];
+        const customImports = ['importtransactions','idata','piidata','sscustomers','shdata','sddata'];
 
         ipcRenderer.on('log',function(event,text){ log(text); });
         ipcRenderer.on('error',function(event,text){ logDBError(text); });
