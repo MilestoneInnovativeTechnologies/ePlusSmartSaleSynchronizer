@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fetch Remote Data changed tables</title>
+    <script>
+        const { ipcRenderer,remote } = require('electron'), url = require('url'), $ = require('jquery'), path = 'ajax/info';
+        let parentWindow;
+
+        function log(text){ $('body').text(text); send('log','RDC :: ' + text); }
+        function send(channel,arg){ parentWindow.webContents.send.apply(null,[channel,arg]); }
+
+        function getPreparedFetchUrl(interact,client,tables){
+            let { protocol,hostname,pathname } = url.parse(interact), query = { 'tables[]':tables };
+            pathname = [pathname,path,client].join('/');
+            return url.format({ protocol,hostname,pathname,query }).toString();
+        }
+
+        function fetchTables(url){
+            $.getJSON(url).done(function(resp){
+                send('remote-changed-tables',resp);
+            }).fail(function(xhr){
+                if(!xhr.readyState){ log('Network Error..'); log('May be no internet connection'); log('OR'); log('Url defined may be unreachable..'); }
+                else log('Download failed!!');
+                send('remote-changed-tables',[]);
+            })
+        }
+
+        ipcRenderer.on('data',function(event,{ parentWindowId, client, interact, tables }){
+            parentWindow = remote.BrowserWindow.fromId(parentWindowId);
+            fetchTables(getPreparedFetchUrl(interact,client,tables));
+        })
+    </script>
+</head>
+<body>
+
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "sssync",
-  "version": "0.3.0",
-  "description": "ePlus Smart Sale Sync - sync data to local pc to web and vice verse",
+  "version": "0.4.0",
+  "description": "ePlus Smart Sale Sync - Sync data from local pc to web and vice verse",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

@@ -6,10 +6,12 @@
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,700" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/mainWindow.css">
+    <script type="text/javascript" src="assets/js/LDCQuery.js"></script>
+    <script type="text/javascript" src="assets/js/SQLCondition.js"></script>
     <script>
         const { ipcRenderer,remote } = require('electron'), { dialog,BrowserWindow } = remote, currentWindow = remote.getCurrentWindow(),
             $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'), url = require('url'),
-            maxLog = 15, continueInterval = 1500, processTableWindowConfig = { width:300, height:300, show:false },
+            maxLog = 15, continueInterval = 1500, LDCInterval = 17000, RDCInterval = 23000, RDCTables = [], processTableWindowConfig = { width:300, height:300, show:false },
             quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] };
 
         let syncInfo,syncFile,userPath,uuidFilePath,errorLogFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
@@ -32,14 +34,16 @@
 
         $(function(){
             initApp(ipcRenderer.sendSync('get-all-config'));
-            setInterval(doProcessQueue,continueInterval);
         });
         function initApp(configs){
             log('Initializing sync..');
             syncInfo = configs.syncInfo; syncFile = configs.syncFilePath; userPath = configs.userPath; uuidFilePath = configs.uuidFilePath; errorLogFilePath = configs.errorLogFilePath;
             mysqlParams = _.assign({ dateStrings:true },configs.mysqlParams);
             setupApp(configs.ssConfig); setupMysqlConnection();
-            loadTblData(function(){ _.forEach(syncInfo,initTable); });// addToProcessQueue(getTimeNow(),['setup','up']);
+            loadTblData(function(){
+                _.forEach(syncInfo,initTable);
+                startProcess()
+            });
         }
         function setupApp(config){
             ssConfig = config;
@@ -48,6 +52,12 @@
                 if(error) log('Error in reading uuid file!!');
                 client = uuid.toString();
             })
+        }
+        function startProcess(){
+            const lastQueueTime = _.keys(processQueue).sort((a,b) => parseInt(b) - parseInt(a))[0];
+            initLDCUploads(lastQueueTime);
+            initRDCDownloads(lastQueueTime);
+            setInterval(doProcessQueue,continueInterval);
         }
         function loadTblData(callback){
             fs.access(syncFile,function(error){
@@ -89,7 +99,8 @@
                 getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
             if(!_.has(tblData[table],'fields') || _.isEmpty(tblData[table].fields))
                 getTableFields(table).then(function(Obj){ _.forEach(Obj,(fields,table) => updateTblData(table,'fields',fields)) });
-            addToProcessQueue(timeNow,[table,type,delay]);// addToProcessQueue(timeNow,[table,'down']);
+            if(type !== 'up') RDCTables.push(table);
+            addToProcessQueue(timeNow,[table,type,delay]);
         }
         function send(channel,args){ ipcRenderer.send.apply(null,[channel,args]) }
         function getInteractUrl(tbl){
@@ -146,13 +157,15 @@
         }
         function isOneTimeTable( { fields } ){ return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) }
         function reQueueSyncForTable(table,type){
-            let delay = parseInt(tblData[table].delay); if(!delay) return inWork = false;
-            if(!inQueue(table,type)) addToProcessQueue(delay + getTimeNow(),[table,type]);
-            log('Table: ' + table + ', added to Queue'); return inWork = false;
+            let delay = parseInt(tblData[table].delay), fields = tblData[table].fields; if(!delay) return inWork = false;
+            if((!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) && !inQueue(table,type)){
+                addToProcessQueue(delay + getTimeNow(),[table,type]);
+                log('Table: ' + table + ', added to Queue'); return inWork = false;
+            }
         }
         function inQueue(table,type){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === type)); }
         function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
-        function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); }
+        function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); return no; }
         function getQueueItem(text,type,id){ return $('<a>').addClass(['queue-item',type,id]).text(text); }
         function displayProcessQueue(){ let queueDiv = $('#queue'); $('.queue-item',queueDiv).remove(); _.forEach(processQueue,(data,id) => { queueDiv.append(getQueueItem(data[0],data[1],id)); }); }
         function haveQueueEarlierThan(num){ let first = _.head(_.keys(processQueue)); return !!(first && parseInt(first) <= parseInt(num)); }
@@ -166,19 +179,69 @@
             if(!doContinue || inWork || !haveQueueEarlierThan(timeNow) || processTableWindow !== null) return;
             let data = pullFirstFromQueue(); if(!data) return;
             inWork = true; updateWorking(); setWorkingDisplay(data[0],data[1]);
-            let iUrl = getInteractUrl(data[0]);
+            loadProcessTableWindow(...data);
+        }
+        function loadProcessTableWindow(table,type){
             processTableWindow = new BrowserWindow(processTableWindowConfig).on('closed', function(){ processTableWindow = null; inWork = false; });
             processTableWindow.loadURL(path.join(__dirname,'sessions','processTable.html'));
             processTableWindow.webContents.on('did-finish-load',function(){
                 loadTblData(function(){
                     processTableWindow.webContents.send('config',{
-                        table:data[0],type:data[1],tblData,parentWindowId:currentWindow.id,syncFile,
-                        mysqlParams,url:iUrl,custom:(customImports.indexOf(data[0]) > -1),cache:getCachedRecords(data[0])
+                        table,type,tblData,parentWindowId:currentWindow.id,syncFile,
+                        mysqlParams,url:getInteractUrl(table),custom:(customImports.indexOf(table) > -1),cache:getCachedRecords(table)
                     });
                 })
             });
         }
-
+    </script>
+    <script>
+        let EQW = null, LDCTimeout = 0;
+        function initLDCUploads(lqi){
+            if(_.has(processQueue,lqi)) return setTimeout(initLDCUploads,LDCInterval,lqi);
+            return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
+        }
+        function LDCCheck(){
+            clearTimeout(LDCTimeout); if(!doContinue) return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
+            log('Preparing local data change checks!');
+            loadTblData(function(){
+                let query = _(tblData).map((data,table) => [data.id,new LDCQuery(table,data).prepare()]).filter(Ary => Ary[1]).sortBy(Ary => Ary[0]).map(Ary => Ary[1]).value().join(' UNION ');
+                let sendData = { mysqlParams,queries:{ ldc:query },parentWindowId:currentWindow.id,success:'-' };
+                EQW = new BrowserWindow({ width:300, height:300, show:false }).on('closed',() => EQW = null);
+                if(EQW){
+                    EQW.loadURL(path.join(__dirname,'sessions','getQueryResult.html'));
+                    EQW.webContents.on('did-finish-load',function(){ EQW.webContents.send('data',sendData); });
+                }
+            });
+        }
+        ipcRenderer.on('query-result',function (event,fn,args){
+            if(EQW && !EQW.isDestroyed()) EQW.destroy(); EQW = null; let Data = args[0]['ldc'], nBatch = [];
+            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? addToProcessQueue(getTimeNow()+3,[TABLE,tblData[TABLE].type]) : false).filter().value();
+            log('Found ' + nBatch.length + ' LDC tables');
+            return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
+        });
+    </script>
+    <script>
+        let RDW = null, RDCTimeout = 0;
+        function initRDCDownloads(lqi){
+            if(_.has(processQueue,lqi)) return setTimeout(initRDCDownloads,RDCInterval,lqi);
+            return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
+        }
+        function RDCCheck(){
+            clearTimeout(RDCTimeout); if(!doContinue) return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
+            log('Preparing remote data change checks!');
+            let sendData = { parentWindowId:currentWindow.id,client,interact:ssConfig.url_interact,tables:RDCTables };
+            RDW = new BrowserWindow({ width:300, height:300, show:false }).on('closed',() => RDW = null);
+            if(RDW){
+                RDW.loadURL(path.join(__dirname,'sessions','fetchRemoteChangedTables.html'));
+                RDW.webContents.on('did-finish-load',function(){ RDW.webContents.send('data',sendData); });
+            }
+        }
+        ipcRenderer.on('remote-changed-tables',function (event,tables){
+            if(RDW && !RDW.isDestroyed()) RDW.destroy(); RDW = null;
+            if(tables && tables.length > 0) _.forEach(tables,table => addToProcessQueue(getTimeNow()+3,[table,tblData[table].type]));
+            log('Found ' + tables.length + ' RDC tables');
+            return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
+        });
     </script>
 </head>
 <body class="bg-light mt-2">
