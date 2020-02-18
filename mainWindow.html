@@ -165,6 +165,7 @@
         }
         function inQueue(table,type){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === type)); }
         function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
+        function addToProcessQueueIfNot(table,type,position){ return inQueue(table,type) ? position : addToProcessQueue(position,[table,type]); }
         function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); return no; }
         function getQueueItem(text,type,id){ return $('<a>').addClass(['queue-item',type,id]).text(text); }
         function displayProcessQueue(){ let queueDiv = $('#queue'); $('.queue-item',queueDiv).remove(); _.forEach(processQueue,(data,id) => { queueDiv.append(getQueueItem(data[0],data[1],id)); }); }
@@ -215,8 +216,8 @@
         }
         ipcRenderer.on('query-result',function (event,fn,args){
             if(EQW && !EQW.isDestroyed()) EQW.destroy(); EQW = null; let Data = args[0]['ldc'], nBatch = [];
-            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? addToProcessQueue(getTimeNow()+3,[TABLE,tblData[TABLE].type]) : false).filter().value();
-            log('Found ' + nBatch.length + ' LDC tables');
+            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? addToProcessQueueIfNot(TABLE,tblData[TABLE].type,getTimeNow()+3) : false).filter().value();
+            log('Found ' + nBatch.length + ' LDC Tables');
             return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
         });
     </script>
@@ -238,8 +239,8 @@
         }
         ipcRenderer.on('remote-changed-tables',function (event,tables){
             if(RDW && !RDW.isDestroyed()) RDW.destroy(); RDW = null;
-            if(tables && tables.length > 0) _.forEach(tables,table => addToProcessQueue(getTimeNow()+3,[table,tblData[table].type]));
-            log('Found ' + tables.length + ' RDC tables');
+            if(tables && tables.length > 0) _.forEach(tables,table => addToProcessQueueIfNot(table,tblData[table].type,getTimeNow()+3));
+            log('Found ' + tables.length + ' RDC Tables');
             return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
         });
     </script>
