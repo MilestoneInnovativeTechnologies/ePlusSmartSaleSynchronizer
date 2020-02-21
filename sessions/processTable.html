@@ -64,8 +64,9 @@
         }
         function to2(t){ return _.padStart(t,2,0)}
         function getMaxOfDateField(collection,field){
-            let dateObject = _.mapKeys(_.map(collection,field),dText => new Date(dText).getTime());
-            return _.get(dateObject,_.max(_.keys(dateObject)))
+            return _(collection).sortBy(data => new Date(data[field]).getTime()).last()[field];
+            // let dateObject = _.mapKeys(_.map(collection,field),dText => new Date(dText).getTime());
+            // return _.get(dateObject,_.max(_.keys(dateObject)));
         }
         function isJsonString(string){
             try{ JSON.parse(string) } catch(e) { return false; }
@@ -139,7 +140,7 @@
         }
         function upSyncInit(){
             queries = {};
-            if(!sync && !record) queries['create'] = update_or_create_RecordQuery();
+            if(!sync && !record) queries['update_or_create'] = update_or_create_RecordQuery();
             else if(sync && (oneTime || delay === 0 || !record)) queries['update_or_create'] = update_or_create_RecordQuery();
             else if(sync && isModOnlyTable()) queries['update_or_create'] = latest_modified_RecordQuery(sync);
             else if(sync && record) {
