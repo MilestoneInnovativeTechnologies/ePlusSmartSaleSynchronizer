@@ -19,7 +19,7 @@ function endWithMaxDate(){
 let data;
 let companies, branches, fycodes, fncodes, docnos;
 
-function processActivity(activity){
+function processActivity(activity){ if(_.isArray(activity)) return processActivity(activity[0])
     let records = activity.data; if(!records.length) return;
     data = getGroupedRecords(records);
     companies = Object.keys(data);
