@@ -19,7 +19,7 @@ function endWithMaxDate(){
 let data;
 let companies, branches, fycodes, fncodes, docnos;
 
-function processActivity(activity){
+function processActivity(activity){ if(_.isArray(activity)) return processActivity(activity[0])
     if(!activity || !activity.data || !activity.data.length) return endWithMaxDate();
     data = getGroupedRecords(activity.data);
     companies = Object.keys(data);
@@ -89,16 +89,17 @@ function insertData(records) {
         mysql.query(insFormat,[names,values],function (error) {
             if(error) logDBError(error);
             log(error ? 'Failed Insert' : 'Inserted '+values.length);
-            return error ? reject(error) : resolve(true)
+            return (error && error.sqlMessage.substr(0,15) !== 'Duplicate entry') ? reject(error) : resolve(true)
         })
     }))
 }
 
-function RunSP(cmp,brn,fyc,fnc,doc,sdoc) {
+function RunSP(cmp,brn,fyc,fnc,doc,sDoc) {
     return new Promise((resolve, reject) => {
         mysql.query(SPCallFormat,[cmp,brn,fyc,fnc,doc],function(error){
             if(error) { logDBError(error); log('Failed Calling SP'); return reject(error); }
-            if(sdoc) mysql.query(ShiftSPCall,getShiftSPArgs(cmp,brn,fyc,fnc,doc,sdoc),function(){ log('SP Executed'); resolve(true); });
+            if(sDoc) mysql.query(ShiftSPCall,getShiftSPArgs(cmp,brn,fyc,fnc,doc,sDoc),function(){ log('Shift SP Executed'); });
+            resolve(true);
         })
     })
 }
@@ -113,6 +114,6 @@ function getFormattedVariables(records) {
     return { names,values }
 }
 
-function getShiftSPArgs(cmp,brn,fyc,fnc,doc,sdoc) {
-    return [cmp,brn,fyc,fnc,doc,cmp,brn,fyc,'SHF',sdoc];
+function getShiftSPArgs(cmp,brn,fyc,fnc,doc,sDoc) {
+    return [cmp,brn,fyc,fnc,doc,cmp,brn,fyc,'SHF',sDoc];
 }

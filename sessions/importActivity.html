@@ -25,7 +25,7 @@
         function doStartImport(){
             log(`${Activity.length} activities!`);
             _.forEach(Activity,(activity,actIdx) => {
-                let { table,mode,data } = activity;
+                let { table,mode,data } = _.isArray(activity) ? activity[0] : activity;
                 if(mode === 'update_or_create') return prepareUpdateOrCreateImportSql(table,pks,data,actIdx);
                 let template = getTemplateString(mode);
                 _.forEach(data,(record) => {
@@ -34,7 +34,7 @@
                      storeSql(sql,primaryValuesKey(record,pks),record);
                 })
             });
-            executeQuery(0)
+            setTimeout(executeQuery,1500,0);
         }
         function executeQuery(index) {
             if(!sqlStore[index]) return fetchAndSendMaxDate();
@@ -42,7 +42,7 @@
             mysql.query(query,function(error){
                 if(error) logDBError(error);
                 exeStatus['i'+index] = !error;
-                executeQuery(index+1)
+                setTimeout(executeQuery,750,index+1);
             })
         }
     </script>
