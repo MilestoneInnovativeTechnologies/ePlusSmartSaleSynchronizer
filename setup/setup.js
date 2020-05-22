@@ -8,7 +8,7 @@ const options = {
     "productName": "ePlus Smart Sale Synchronizer",
     "description": "Database synchronizer to make local and remote database synchronized",
     "productDescription": "Database synchronizer to make local and remote database synchronized",
-    "version": "0.1.6",
+    "version": "0.4.2",
     "authors": ["Milestone Innovative Technologies"],
     "owners": ["Milestone Innovative Technologies"],
     "noMsi": true
