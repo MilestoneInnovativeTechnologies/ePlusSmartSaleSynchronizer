@@ -158,10 +158,11 @@
         function isOneTimeTable( { fields } ){ return (!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) }
         function reQueueSyncForTable(table,type){
             let delay = parseInt(tblData[table].delay), fields = tblData[table].fields; if(!delay) return inWork = false;
-            if((!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) && !inQueue(table,type)){
+            if((!_.includes(fields,'CREATED_DATE') && !_.includes(fields,'MODIFIED_DATE')) && !inQueue(table,type) && type !== 'down'){
                 addToProcessQueue(delay + getTimeNow(),[table,type]);
                 log('Table: ' + table + ', added to Queue'); return inWork = false;
             }
+            return inWork = false;
         }
         function inQueue(table,type){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === type)); }
         function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
