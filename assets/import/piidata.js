@@ -12,7 +12,7 @@ function endWithMaxDate(){
     mysql.query(mDateQuery,function(error,rowsPackets){
         if(error) logDBError(error);
         else mDate = JSON.parse(JSON.stringify(rowsPackets))[0].mDate;
-        return end(mDate);
+        return end(mDate || null);
     })
 }
 
@@ -68,8 +68,7 @@ function processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx) {
     if(!data[cmp][brn][fyc][fnc] || !data[cmp][brn][fyc][fnc][docnos[docIdx]]) return processCompanyBranchYearFn(cmpIdx,brnIdx,fynIdx,fncIdx+1);
     let records = data[cmp][brn][fyc][fnc][docnos[docIdx]], nyDocIdx = docIdx+1;
     processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records)
-        .then(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx))
-        .catch(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx));
+        .finally(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx));
 }
 
 function processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records) {
@@ -90,7 +89,7 @@ function insertData(records) {
         mysql.query(insFormat,[names,values],function (error) {
             if(error) logDBError(error);
             log(error ? 'Failed Insert' : 'Inserted '+values.length);
-            return error ? reject(error) : resolve(true)
+            return (error && error.sqlMessage.substr(0,15) !== 'Duplicate entry') ? reject(error) : resolve(true)
         })
     }))
 }
