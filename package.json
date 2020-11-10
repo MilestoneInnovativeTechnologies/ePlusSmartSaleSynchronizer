@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "prod": "build"
+    "prod": "build",
+    "prod32": "build --ia32"
   },
   "build": {
     "appId": "sssync",
