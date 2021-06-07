@@ -10,8 +10,8 @@
     <script type="text/javascript" src="assets/js/SQLCondition.js"></script>
     <script>
         const { ipcRenderer,remote } = require('electron'), { dialog,BrowserWindow } = remote, currentWindow = remote.getCurrentWindow(),
-            $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'), url = require('url'),
-            maxLog = 15, continueInterval = 1500, LDCInterval = 17000, RDCInterval = 23000, RDCTables = [], processTableWindowConfig = { width:300, height:300, show:false },
+            $ = require('jquery'), _ = require('lodash'), fs = require('fs'), db = require('mysql'), path = require('path'), url = require('url'), CryptoJS = require("crypto-js"),
+            maxLog = 15, continueInterval = 1500, LDCInterval = 11000, queueInsMaxWait = 15, RDCInterval = 17000, RDCTables = [], OTCInterval = 13000, OTCTables = [], OTCData = {}, processTableWindowConfig = { width:300, height:300, show:false },
             quitConfirmOptions = { type: 'info', title: 'Confirm Quit', message: 'Are you sure, you want to quit ?', buttons: ['No, go Back','Yes, Quit'] };
 
         let syncInfo,syncFile,userPath,uuidFilePath,errorLogFilePath,client,mysqlParams,mysql,tblData = {},processQueue = {}, doContinue = true,
@@ -31,8 +31,11 @@
             processTableWindow = null;
             if(tblDetails && !_.isEmpty(tblDetails)) reQueueSyncForTable.apply(this,tblDetails);
         });
+        ipcRenderer.on('query-result',function (event,fn,args){ window[fn].apply(this,args) });
+        ipcRenderer.on('otc-table-data',function (event,args){ OTCData[args[0]] = CryptoJS.MD5(JSON.stringify(args[1])).toString() });
 
         $(function(){
+            remote.getCurrentWebContents().openDevTools();
             initApp(ipcRenderer.sendSync('get-all-config'));
         });
         function initApp(configs){
@@ -57,6 +60,7 @@
             const lastQueueTime = _.keys(processQueue).sort((a,b) => parseInt(b) - parseInt(a))[0];
             initLDCUploads(lastQueueTime);
             initRDCDownloads(lastQueueTime);
+            initOTCUploads(lastQueueTime);
             setInterval(doProcessQueue,continueInterval);
         }
         function loadTblData(callback){
@@ -98,7 +102,8 @@
             if(!_.has(tblData[table],'primary_key') || _.isEmpty(tblData[table].primary_key))
                 getTablePrimaryFields(table).then(function(Obj){ _.forEach(Obj,(primary_key,table) => updateTblData(table,'primary_key',primary_key)) });
             if(!_.has(tblData[table],'fields') || _.isEmpty(tblData[table].fields))
-                getTableFields(table).then(function(Obj){ _.forEach(Obj,(fields,table) => updateTblData(table,'fields',fields)) });
+                getTableFields(table).then(function(Obj){ _.forEach(Obj,(fields,table) => updateTblData(table,'fields',fields,!fields.includes('MODIFIED_DATE') && type === 'up' ? OTCTables.push(table) : null)) });
+            else if(type === 'up' && !tblData[table]['fields'].includes('MODIFIED_DATE')) OTCTables.push(table)
             if(type !== 'up') RDCTables.push(table);
             addToProcessQueue(timeNow,[table,type,delay]);
         }
@@ -164,7 +169,8 @@
             }
             return inWork = false;
         }
-        function inQueue(table,type){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === type)); }
+        //function inQueue(table,type){ return _.some(processQueue,(arr)=>(arr[0] === table && arr[1] === type)); }
+        function inQueue(table,type){ return parseInt(_.findKey(processQueue,ary => ary[0] === table && ary[1] === type) || 0) }
         function addToProcessQueue(no,data){ return processQueue.hasOwnProperty(no) ? addToProcessQueue(++no,data) : putProcessQueue(no,data); }
         function addToProcessQueueIfNot(table,type,position){ return inQueue(table,type) || addToProcessQueue(position,[table,type]); }
         function putProcessQueue(no,data){ processQueue[no] = data; displayProcessQueue(); return no; }
@@ -214,7 +220,7 @@
             log('Preparing local data change checks!');
             loadTblData(function(){
                 let query = _(tblData).map((data,table) => [data.id,new LDCQuery(table,data).prepare()]).filter(Ary => Ary[1]).sortBy(Ary => Ary[0]).map(Ary => Ary[1]).value().join(' UNION ');
-                let sendData = { mysqlParams,queries:{ ldc:query },parentWindowId:currentWindow.id,success:'-' };
+                let sendData = { mysqlParams,queries:{ ldc:query },parentWindowId:currentWindow.id,success:'LDCResultsHandle' };
                 EQW = new BrowserWindow({ width:300, height:300, show:false }).on('closed',() => EQW = null);
                 if(EQW){
                     EQW.loadURL(path.join(__dirname,'sessions','getQueryResult.html'));
@@ -222,12 +228,12 @@
                 }
             });
         }
-        ipcRenderer.on('query-result',function (event,fn,args){
-            if(EQW && !EQW.isDestroyed()) EQW.destroy(); EQW = null; let Data = args[0]['ldc'], nBatch = [];
-            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? addToProcessQueueIfNot(TABLE,tblData[TABLE].type,getTimeNow()+3) : false).filter().value();
-            log('Found ' + nBatch.length + ' LDC Tables');
-            return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
-        });
+        function LDCResultsHandle(args){
+            if(EQW && !EQW.isDestroyed()) EQW.destroy(); EQW = null; let Data = args['ldc'], nBatch = [], timeNow = getTimeNow(), last = timeNow;
+            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? fillToProcessQueue(TABLE,tblData[TABLE].type,timeNow) : false).filter().value();
+            log('Found ' + nBatch.length + ' LDC Tables'); if(nBatch.length) log(_.truncate(_.map(nBatch,tme => processQueue[tme][0]).join(', '),{ length: 50 })); last = _.last(nBatch) || last;
+            return LDCTimeout = setTimeout(LDCCheck,LDCInterval + ((last - timeNow) * 1000));
+        }
     </script>
     <script>
         let RDW = null, RDCTimeout = 0;
@@ -252,6 +258,32 @@
             log('Found ' + tables.length + ' RDC Tables'); if(nBatch.length) log(_.truncate(_.map(nBatch,tme => processQueue[tme][0]).join(', '),{ length: 50 })); last = _.last(nBatch) || last;
             return RDCTimeout = setTimeout(RDCCheck,RDCInterval + ((last - timeNow) * 1000));
         });
+    </script>
+    <script>
+        let EQW2 = null, OTCTimeout = 0;
+        function initOTCUploads(lqi){
+            if(_.has(processQueue,lqi)) return setTimeout(initOTCUploads,OTCInterval,lqi);
+            return OTCTimeout = setTimeout(OTCCheck,OTCInterval);
+        }
+        function OTCCheck(){
+            clearTimeout(OTCTimeout); if(!doContinue || inWork) return OTCTimeout = setTimeout(OTCCheck,OTCInterval);
+            log('Preparing one time table update checks!');
+            loadTblData(function(){
+                let queries = _(tblData).pick(OTCTables).mapValues((data,table) => `SELECT * FROM ${table}`).value();
+                let sendData = { mysqlParams,queries,parentWindowId:currentWindow.id,success:'OTCResultsHandle' };
+                EQW2 = new BrowserWindow({ width:300, height:300, show:false }).on('closed',() => EQW2 = null);
+                if(EQW2){
+                    EQW2.loadURL(path.join(__dirname,'sessions','getQueryResult.html'));
+                    EQW2.webContents.on('did-finish-load',function(){ EQW2.webContents.send('data',sendData); });
+                }
+            });
+        }
+        function OTCResultsHandle(args){
+            if(EQW2 && !EQW2.isDestroyed()) EQW2.destroy(); EQW2 = null;
+            let nBatch = _(args).map((data,table) => (_.has(OTCData,table) && OTCData[table] !== CryptoJS.MD5(JSON.stringify(data)).toString()) ? fillToProcessQueue(table,tblData[table].type,getTimeNow()) : false).filter().map(tme => processQueue[tme][0]).value();
+            if(nBatch.length) log('Found OT Tables: ' + nBatch.join(', ')); else log('Found no OT Tables');
+            return OTCTimeout = setTimeout(OTCCheck,OTCInterval);
+        }
     </script>
 </head>
 <body class="bg-light mt-2">
