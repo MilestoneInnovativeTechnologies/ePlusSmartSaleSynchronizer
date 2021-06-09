@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!--suppress ALL -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -29,10 +28,11 @@
                 let { table,mode,data } = _.isArray(activity) ? activity[0] : activity;
                 if(mode === 'update_or_create') return prepareUpdateOrCreateImportSql(table,pks,data,actIdx);
                 let template = getTemplateString(mode);
-                _.forEach(data,(record) => {
-                     let formatArray = getSqlFormatArray(table,mode,record,pks);
-                     let sql = mysql.format(template,formatArray);
-                     storeSql(sql,primaryValuesKey(record,pks),record);
+                _.forEach(data,async (record) => {
+                    let myMode = (await isDataExists(table,record,pks)) ? 'update' : 'create';
+                    let formatArray = getSqlFormatArray(table,myMode,record,pks);
+                    let sql = mysql.format(template,formatArray);
+                    storeSql(sql,primaryValuesKey(record,pks),record);
                 })
             });
             setTimeout(executeQuery,1500,0);
@@ -64,10 +64,12 @@
         }
         function getSqlFormatArray(table, mode, data, pk) {
             let sets = [table,_.pick(data,fields)];
-            if(mode === 'update'){ sets.push(getConditionObject(data,pk)); }
+            if(mode === 'update'){ sets.push(getWhereString(data,pk)); }
             return sets;
         }
-        function getConditionObject(data,pk){ return _.pick(data,pk); }
+        function getWhereString(record,pks){
+            return _(pks).map(key => mysql.format('??=?',[key,record[key]])).value().join(' AND ')
+        }
         function doUpdateRecordSql(table, set, where) {
             let template = getTemplateString('update');
             return mysql.format(template,[table,set,where]);
@@ -83,18 +85,18 @@
     <script>
         function prepareUpdateOrCreateImportSql(table, primary_key, data, actIdx){
             _.forEach(data,async (record,recIdx)=> {
-                let where = getConditionObject(record,primary_key);
-                let dataExists = await isDataExists(table,where);
+                let where = getWhereString(record,primary_key);
+                let dataExists = await isDataExists(table,record,primary_key);
                 let sql = (dataExists) ? doUpdateRecordSql(table,record,where) : doInsertRecordSql(table,record);
                 storeSql(sql,primaryValuesKey(record,primary_key),record);
             });
         }
     </script>
     <script>
-        async function isDataExists(table,pkValues){
+        async function isDataExists(table,record,pks){
             return await new Promise(function(resolve){
-                mysql.query(mysql.format("SELECT * FROM ?? WHERE ?",[table,pkValues]),function(error,rows){
-                    if(error) logDBError(error);
+                mysql.query(mysql.format("SELECT * FROM ?? WHERE ",[table]) + getWhereString(record,pks),function(error,rows){
+                    if(error) logDBError(error)
                     if(rows.length === 0) return resolve(false);
                     return resolve(true);
                 })
