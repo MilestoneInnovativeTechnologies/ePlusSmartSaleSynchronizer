@@ -216,7 +216,7 @@
             return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
         }
         function LDCCheck(){
-            clearTimeout(LDCTimeout); if(!doContinue) return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
+            clearTimeout(LDCTimeout); if(!doContinue || inWork) return LDCTimeout = setTimeout(LDCCheck,LDCInterval);
             log('Preparing local data change checks!');
             loadTblData(function(){
                 let query = _(tblData).map((data,table) => [data.id,new LDCQuery(table,data).prepare()]).filter(Ary => Ary[1]).sortBy(Ary => Ary[0]).map(Ary => Ary[1]).value().join(' UNION ');
@@ -225,6 +225,9 @@
                 if(EQW){
                     EQW.loadURL(path.join(__dirname,'sessions','getQueryResult.html'));
                     EQW.webContents.on('did-finish-load',function(){ EQW.webContents.send('data',sendData); });
+                } else {
+                    inWork = false;
+                    LDCTimeout = setTimeout(LDCCheck,LDCInterval);
                 }
             });
         }
@@ -242,20 +245,24 @@
             return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
         }
         function RDCCheck(){
-            clearTimeout(RDCTimeout); if(!doContinue) return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
-            log('Preparing remote data change checks!');
+            clearTimeout(RDCTimeout); if(!doContinue || inWork) return RDCTimeout = setTimeout(RDCCheck,RDCInterval);
+            log('Preparing remote data change checks!'); inWork = true;
             let sendData = { parentWindowId:currentWindow.id,client,interact:ssConfig.url_interact,tables:RDCTables };
             RDW = new BrowserWindow({ width:300, height:300, show:false }).on('closed',() => RDW = null);
             if(RDW){
                 RDW.loadURL(path.join(__dirname,'sessions','fetchRemoteChangedTables.html'));
                 RDW.webContents.on('did-finish-load',function(){ RDW.webContents.send('data',sendData); });
+            } else {
+                inWork = false;
+                RDCTimeout = setTimeout(RDCCheck,RDCInterval);
             }
         }
         ipcRenderer.on('remote-changed-tables',function (event,tables){
             if(RDW && !RDW.isDestroyed()) RDW.destroy(); RDW = null; let nBatch = [], timeNow = getTimeNow(), last = timeNow;
             //if(tables && tables.length > 0) _.forEach(tables,table => addToProcessQueueIfNot(table,tblData[table].type,getTimeNow()+3));
             if(tables && tables.length > 0) nBatch = _(tables).map(table => fillToProcessQueue(table,tblData[table].type,timeNow)).filter().value();
-            log('Found ' + tables.length + ' RDC Tables'); if(nBatch.length) log(_.truncate(_.map(nBatch,tme => processQueue[tme][0]).join(', '),{ length: 50 })); last = _.last(nBatch) || last;
+            log('Found ' + tables.length + ' RDC Tables'); if(nBatch.length) log(_.truncate(_.map(nBatch,tme => processQueue[tme][0]).join(', '),{ length: 50 }));
+            last = _.last(nBatch) || last; inWork = false;
             return RDCTimeout = setTimeout(RDCCheck,RDCInterval + ((last - timeNow) * 1000));
         });
     </script>
@@ -267,7 +274,7 @@
         }
         function OTCCheck(){
             clearTimeout(OTCTimeout); if(!doContinue || inWork) return OTCTimeout = setTimeout(OTCCheck,OTCInterval);
-            log('Preparing one time table update checks!');
+            log('Preparing one time table update checks!'); inWork = true;
             loadTblData(function(){
                 let queries = _(tblData).pick(OTCTables).mapValues((data,table) => `SELECT * FROM ${table}`).value();
                 let sendData = { mysqlParams,queries,parentWindowId:currentWindow.id,success:'OTCResultsHandle' };
@@ -275,13 +282,16 @@
                 if(EQW2){
                     EQW2.loadURL(path.join(__dirname,'sessions','getQueryResult.html'));
                     EQW2.webContents.on('did-finish-load',function(){ EQW2.webContents.send('data',sendData); });
+                } else {
+                    inWork = false;
+                    OTCTimeout = setTimeout(OTCCheck,OTCInterval);
                 }
             });
         }
         function OTCResultsHandle(args){
             if(EQW2 && !EQW2.isDestroyed()) EQW2.destroy(); EQW2 = null;
             let nBatch = _(args).map((data,table) => (_.has(OTCData,table) && OTCData[table] !== CryptoJS.MD5(JSON.stringify(data)).toString()) ? fillToProcessQueue(table,tblData[table].type,getTimeNow()) : false).filter().map(tme => processQueue[tme][0]).value();
-            if(nBatch.length) log('Found OT Tables: ' + nBatch.join(', ')); else log('Found no OT Tables');
+            if(nBatch.length) log('Found OT Tables: ' + nBatch.join(', ')); else log('Found no OT Tables'); inWork = false;
             return OTCTimeout = setTimeout(OTCCheck,OTCInterval);
         }
     </script>
