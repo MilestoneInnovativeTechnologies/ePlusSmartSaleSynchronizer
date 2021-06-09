@@ -1,6 +1,8 @@
 const db = require('mysql'), _ = require('lodash');
 const insFormat = 'INSERT INTO `idata` (??) VALUES ?';
+const updFormat = 'UPDATE `idata` SET ? WHERE ';
 const SPCallFormat = 'CALL SP_ACCOUNTPOSTING (?,?,?,?,?)';
+const SPMT1CallFormat = 'CALL SP_UPDATEWORKFLOW (?,?,?,?,?,?,?,?,?,?,?)';
 const ShiftSPCall = 'CALL SP_UPDATESHIFTINFO(?,?,?,?,?,?,?,?,?,?)';
 const mDateQuery = 'SELECT MAX(CREATED_DATE) mDate FROM `idata`';
 let mysql, tblData;
@@ -71,18 +73,21 @@ function processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx) {
         .finally(() => processCompanyBranchYearFnDoc(cmpIdx, brnIdx, fynIdx, fncIdx, nyDocIdx));
 }
 
-function processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records) {
-    let cmp = companies[cmpIdx], brn = branches[brnIdx], fyc = fycodes[fynIdx], fnc = fncodes[fncIdx], doc = docnos[docIdx];
+async function processData(cmpIdx, brnIdx, fynIdx, fncIdx, docIdx, records) {
+    let cmp = companies[cmpIdx], brn = branches[brnIdx], fyc = fycodes[fynIdx], fnc = fncodes[fncIdx], doc = docnos[docIdx], sDoc = _.get(records,[0,'SHFDOCNO'],null);
+    let ref = _.pick(records[0],['REFCOCODE','REFBRCODE','REFFYCODE','REFFNCODE','REFDOCNO']);
+    let { insert,update } = await sepInsUpdRecords(records);
     return new Promise((resolve, reject) => {
-        insertData(records).then(() => {
-            RunSP(cmp,brn,fyc,fnc,doc,records[0].SHFDOCNO)
-                .then(() => resolve([cmp,brn,fyc,fnc,doc]))
+        Promise.all([insertData(insert),updateRecords(update)]).then(() => {
+            RunSP(cmp,brn,fyc,fnc,doc,sDoc)
+                .then(() => RunMT1SP(ref.REFCOCODE,ref.REFBRCODE,ref.REFFYCODE,ref.REFFNCODE,ref.REFDOCNO,'Approved',cmp,brn,fyc,fnc,doc).then(res => resolve([cmp,brn,fyc,fnc,doc])))
                 .catch(() => reject([cmp,brn,fyc,fnc,doc]));
         }).catch(() => reject(cache(records)))
     })
 }
 
 function insertData(records) {
+    if(_.isEmpty(records)) return Promise.resolve(true);
     let insRecords = getInsertRecord(records);
     let { names,values } = getFormattedVariables(insRecords);
     return new Promise(((resolve, reject) => {
@@ -94,12 +99,40 @@ function insertData(records) {
     }))
 }
 
+async function updateRecords(records) {
+    if(_.isEmpty(records)) return Promise.resolve(true);
+    records = getInsertRecord(records);
+    for(let i in records){
+        let record = records[i];
+        await updateRecord(record)
+    }
+    return Promise.resolve(true);
+}
+
+function updateRecord(record){
+    return new Promise(((resolve,reject) => {
+        mysql.query(mysql.format(updFormat,[record]) + getWhereString(record),function(error){
+            return error ? reject(logDBError(error) || false) : resolve(true)
+        })
+    }))
+}
+
 function RunSP(cmp,brn,fyc,fnc,doc,sDoc) {
     return new Promise((resolve, reject) => {
         mysql.query(SPCallFormat,[cmp,brn,fyc,fnc,doc],function(error){
             if(error) { logDBError(error); log('Failed Calling SP'); return reject(error); }
             if(sDoc) mysql.query(ShiftSPCall,getShiftSPArgs(cmp,brn,fyc,fnc,doc,sDoc),function(){ log('Shift SP Executed'); });
             resolve(true);
+        })
+    })
+}
+
+function RunMT1SP(...args) {
+    if(args[3] !== 'MT2' || !args[4] || _.filter(args).length !== 11) return Promise.resolve(true);
+    return new Promise((resolve, reject) => {
+        mysql.query(SPMT1CallFormat,args,function(error){
+            if(error) { logDBError(error); log('Failed Calling MT SP'); return reject(error); }
+            log('MT SP Executed!!'); resolve(true);
         })
     })
 }
@@ -116,4 +149,27 @@ function getFormattedVariables(records) {
 
 function getShiftSPArgs(cmp,brn,fyc,fnc,doc,sDoc) {
     return [cmp,brn,fyc,fnc,doc,cmp,brn,fyc,'SHF',sDoc];
+}
+
+function isDataExists(record){
+    return new Promise(function(resolve){
+        mysql.query(mysql.format("SELECT * FROM ?? WHERE ",['idata']) + getWhereString(record),function(error,rows){
+            if(!error && rows && rows.length > 0) resolve(true)
+            else resolve(false);
+        })
+    });
+}
+
+function getWhereString(record){
+    return _(tblData.primary_key).map(key => mysql.format('??=?',[key,record[key]])).value().join(' AND ')
+}
+
+async function sepInsUpdRecords(records){
+    let insert = [], update = [];
+    for(let i in records){
+        let record = records[i];
+        if(await isDataExists(record)) update.push(record)
+        else insert.push(record)
+    }
+    return { insert,update }
 }
