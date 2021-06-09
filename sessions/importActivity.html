@@ -11,6 +11,7 @@
     </script>
     <script>
         ipcRenderer.on('data',function(event,data){
+            // remote.getCurrentWebContents().openDevTools();
             parentWindow = remote.BrowserWindow.fromId(data.parentWindowId);
             mysql = db.createConnection(data.mysqlParams); mysql.connect();
             Activity = data.activity; table = data.table; tblData = data.tblData; pks = tblData.primary_key; fields = tblData.fields;

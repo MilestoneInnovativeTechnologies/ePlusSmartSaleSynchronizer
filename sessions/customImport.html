@@ -7,6 +7,7 @@
         const { ipcRenderer,remote } = require('electron'), $ = require('jquery');
         let table,parentWindow;
         ipcRenderer.on('data',function(event,dataObj){
+            // remote.getCurrentWebContents().openDevTools();
             table = dataObj.table; parentWindow = remote.BrowserWindow.fromId(dataObj.parentWindowId);
             let scriptFile = `../assets/import/${table}.js`;
             $.getScript(scriptFile,function () {
