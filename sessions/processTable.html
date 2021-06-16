@@ -23,6 +23,7 @@
     </script>
     <script>
         ipcRenderer.on('config',function(event,dataObj){
+            // remote.getCurrentWebContents().openDevTools();
             table = dataObj.table; tblData = dataObj.tblData; syncFile = dataObj.syncFile; cache = dataObj.cache;
             mysqlParams = dataObj.mysqlParams; setupMysqlConnection(); custom = dataObj.custom;
             parentWindow = BrowserWindow.fromId(dataObj.parentWindowId)

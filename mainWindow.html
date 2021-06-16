@@ -35,7 +35,7 @@
         ipcRenderer.on('otc-table-data',function (event,args){ OTCData[args[0]] = CryptoJS.MD5(JSON.stringify(args[1])).toString() });
 
         $(function(){
-            // remote.getCurrentWebContents().openDevTools();
+            remote.getCurrentWebContents().openDevTools();
             initApp(ipcRenderer.sendSync('get-all-config'));
         });
         function initApp(configs){
