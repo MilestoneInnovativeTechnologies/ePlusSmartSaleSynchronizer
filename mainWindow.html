@@ -18,6 +18,8 @@
             inWork = false, processTableWindow = null,workTimeOut = 0,cache = {};
 
         const customImports = ['importtransactions','idata','piidata','sscustomers','shdata','sddata'];
+        const dependTables = { invstoremaster:['branchstore','branchmaster','companymaster','companydetails'] };
+        const OTAvoid = ['branchstore']
 
         ipcRenderer.on('log',function(event,text){ log(text); });
         ipcRenderer.on('error',function(event,text){ logDBError(text); });
@@ -35,7 +37,7 @@
         ipcRenderer.on('otc-table-data',function (event,args){ OTCData[args[0]] = CryptoJS.MD5(JSON.stringify(args[1])).toString() });
 
         $(function(){
-            remote.getCurrentWebContents().openDevTools();
+            // remote.getCurrentWebContents().openDevTools();
             initApp(ipcRenderer.sendSync('get-all-config'));
         });
         function initApp(configs){
@@ -233,8 +235,8 @@
         }
         function LDCResultsHandle(args){
             if(EQW && !EQW.isDestroyed()) EQW.destroy(); EQW = null; let Data = args['ldc'], nBatch = [], timeNow = getTimeNow(), last = timeNow;
-            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? fillToProcessQueue(TABLE,tblData[TABLE].type,timeNow) : false).filter().value();
-            log('Found ' + nBatch.length + ' LDC Tables'); if(nBatch.length) log(_.truncate(_.map(nBatch,tme => processQueue[tme][0]).join(', '),{ length: 50 })); last = _.last(nBatch) || last;
+            if(Data && Data.length > 0) nBatch = _(Data).map(({ TABLE,MODIFIED,CREATED }) => (MODIFIED || CREATED) ? fillToProcessQueue(TABLE,tblData[TABLE].type,timeNow) : false).filter().map(tme => processQueue[tme][0]).map(table => _.has(dependTables,table) ? _.map(dependTables[table],dTbl => fillToProcessQueue(dTbl,tblData[dTbl].type,timeNow) ? dTbl : dTbl) : table).flatten().value();
+            log('Found ' + nBatch.length + ' LDC Tables'); if(nBatch.length) log(_.truncate(nBatch.join(', '),{ length: 50 })); last = parseInt(_.findKey(processQueue,ary => ary[0] === _.last(nBatch))) || last;
             return LDCTimeout = setTimeout(LDCCheck,LDCInterval + ((last - timeNow) * 1000));
         }
     </script>
@@ -290,7 +292,7 @@
         }
         function OTCResultsHandle(args){
             if(EQW2 && !EQW2.isDestroyed()) EQW2.destroy(); EQW2 = null;
-            let nBatch = _(args).map((data,table) => (_.has(OTCData,table) && OTCData[table] !== CryptoJS.MD5(JSON.stringify(data)).toString()) ? fillToProcessQueue(table,tblData[table].type,getTimeNow()) : false).filter().map(tme => processQueue[tme][0]).value();
+            let nBatch = _(args).map((data,table) => (!_.includes(OTAvoid,table) && _.has(OTCData,table) && OTCData[table] !== CryptoJS.MD5(JSON.stringify(data)).toString()) ? fillToProcessQueue(table,tblData[table].type,getTimeNow()) : false).filter().map(tme => processQueue[tme][0]).value();
             if(nBatch.length) log('Found OT Tables: ' + nBatch.join(', ')); else log('Found no OT Tables'); inWork = false;
             return OTCTimeout = setTimeout(OTCCheck,OTCInterval);
         }
