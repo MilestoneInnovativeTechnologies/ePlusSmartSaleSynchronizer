@@ -1,4 +1,5 @@
 const db = require('mysql'), _ = require('lodash'), FNCODE = 'ACMAS02';
+const {NULL} = require("mysql/lib/protocol/constants/types");
 const countryCurrencyZone = 'SELECT B.COUNTRY,B.ZONECODE,C.CURRENCYCODE CURRENCY FROM branchmaster B,companydetails C WHERE B.COCODE = C.CODE AND B.CODE = ? AND C.CODE = ?';
 const multiBranch = 'SELECT MULTIBRANCH FROM SETUP WHERE CODE = "01"';
 const argQuery = ["SELECT ARGUMENTS FROM `FUNCTION` WHERE CODE = ?","SELECT ARGUMENTS FROM BRANCHFUNCTION WHERE FNCODE = ? AND BRCODE = ? AND COCODE = ?"]
@@ -97,7 +98,7 @@ function getCountryCurrencyZone(BRCODE,COCODE){
             if(error) { logDBError(error); return resolve(false); }
             let COUNTRY = rowPackets[0].COUNTRY || 'IN';
             let CURRENCY = rowPackets[0].CURRENCY || 'INR';
-            let ZONECODE = rowPackets[0].ZONECODE || '';
+            let ZONECODE = rowPackets[0].ZONECODE || null;
             return resolve({ COUNTRY,CURRENCY,ZONECODE })
         })
     })
