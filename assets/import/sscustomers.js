@@ -114,7 +114,7 @@ function masterInsert(CODE,NAME,PCODE){
 }
 
 function detailInsert(data){
-    let { names,values } = getFormattedVariables([data]);
+    let { names,values } = getFormattedVariables([data],null);
     return new Promise(function (resolve){
         mysql.query(insFormat2,[names,values],function (error) {
             if(!error) return resolve(true);
@@ -132,14 +132,14 @@ function areaInsert(AREACODE,CODE){
     })
 }
 
-function getFormattedVariables(records) {
+function getFormattedVariables(records,emptyVal) {
     let names = Object.keys(_.head(records));
-    let values = _.map(records,record => getNamesValues(names,record));
+    let values = _.map(records,record => getNamesValues(names,record,emptyVal));
     return { names,values }
 }
 
-function getNamesValues(names,record){
+function getNamesValues(names,record,emptyVal){
     let values = [];
-    for(let i in names) values[i] = record[names[i]] || '';
+    for(let i in names) values[i] = record[names[i]] || (emptyVal !== undefined ? emptyVal : null)
     return values;
 }
