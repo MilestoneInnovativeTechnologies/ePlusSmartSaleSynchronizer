@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "electron": "^4.1.4",
-    "electron-builder": "^20.44.4",
+    "electron-builder": "^23.6.0",
     "electron-installer-windows": "^1.1.1",
     "electron-packager": "^13.1.1"
   }
